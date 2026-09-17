@@ -5,6 +5,7 @@ import { LayananPage } from './pages/LayananPage';
 import { ProfilPage } from './pages/ProfilPage';
 import { DashboardLayout } from './layouts/DashboardLayout';
 import { DashboardPage } from './pages/DashboardPage';
+import { UsersPage } from './pages/UsersPage';
 import { ProtectedRoute } from './components/common/ProtectedRoute';
 
 export function App() {
@@ -23,6 +24,7 @@ export function App() {
             <Route path="/dashboard" element={<DashboardPage />} />
             {/* Rute Layanan Saya yang Baru Ditambahkan */}
             <Route path="/layanan" element={<LayananPage />} />
+            <Route path="/users" element={<UsersPage />} />
             <Route path="/profil" element={<ProfilPage />} />
           </Route>
         </Route>

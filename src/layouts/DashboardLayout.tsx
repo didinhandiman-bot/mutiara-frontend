@@ -27,6 +27,7 @@ export const DashboardLayout = () => {
   const navLinks = [
     { path: '/dashboard', label: 'Dashboard' },
     { path: '/layanan', label: 'Layanan Saya' },
+    { path: '/users', label: 'Users' },
     { path: '/profil', label: 'Profil Saya' }
   ];
 
