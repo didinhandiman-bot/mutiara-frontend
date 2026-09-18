@@ -36,7 +36,7 @@ export interface User {
 export interface UserFormData {
   nama: string;
   email: string;
-  password: string;
+  password?: string;
   role: 'admin' | 'operator' | 'viewer';
 }
 
@@ -64,6 +64,18 @@ export const getUsersApi = async (page: number = 1, limit: number = 10): Promise
 // Buat user baru
 export const createUserApi = async (userData: UserFormData): Promise<{ success: boolean; data: User }> => {
   const response = await API.post('/users', userData);
+  return response.data;
+};
+
+// Update user
+export const updateUserApi = async (id: number, userData: Partial<UserFormData>): Promise<{ success: boolean; data: User }> => {
+  const response = await API.put(`/users/${id}`, userData);
+  return response.data;
+};
+
+// Hapus user
+export const deleteUserApi = async (id: number): Promise<{ success: boolean; message: string }> => {
+  const response = await API.delete(`/users/${id}`);
   return response.data;
 };
 

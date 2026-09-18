@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getUsersApi, createUserApi, type UserFormData, type User as UserType } from '../services/api';
+import { getUsersApi, createUserApi, updateUserApi, deleteUserApi, type UserFormData, type User as UserType } from '../services/api';
 
 export const UsersPage = () => {
   // Data state
@@ -24,6 +24,27 @@ export const UsersPage = () => {
   const [formError, setFormError] = useState<string | null>(null);
   const [formSuccess, setFormSuccess] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState<boolean>(false);
+
+  // Edit state
+  const [editUser, setEditUser] = useState<UserType | null>(null);
+  const [editData, setEditData] = useState<UserFormData>({
+    nama: '',
+    email: '',
+    password: '',
+    role: 'operator'
+  });
+  const [savingEdit, setSavingEdit] = useState<boolean>(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  // Delete confirmation state
+  const [deleteConfirm, setDeleteConfirm] = useState<{ show: boolean; user: UserType | null }>({
+    show: false,
+    user: null
+  });
+  const [deleting, setDeleting] = useState<boolean>(false);
+
+  // Toast notification state
+  const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Fetch users dari API
   const fetchUsers = async (page: number) => {
@@ -99,6 +120,103 @@ export const UsersPage = () => {
     }
   };
 
+  // Buka modal edit
+  const openEditModal = (user: UserType) => {
+    setEditUser(user);
+    setEditData({
+      nama: user.nama,
+      email: user.email,
+      password: '', // Kosongkan untuk keamanan
+      role: user.role as 'admin' | 'operator' | 'viewer'
+    });
+    setEditError(null);
+  };
+
+  // Close modal edit
+  const closeEditModal = () => {
+    setEditUser(null);
+    setEditData({ nama: '', email: '', password: '', role: 'operator' });
+    setEditError(null);
+  };
+
+  // Handle perubahan form edit
+  const handleEditChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setEditData(prev => ({ ...prev, [name]: value }));
+  };
+
+  // Simpan perubahan edit
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editUser) return;
+
+    setEditError(null);
+
+    if (!editData.nama || !editData.email) {
+      setEditError('Nama dan email wajib diisi!');
+      return;
+    }
+
+    try {
+      setSavingEdit(true);
+      const updatePayload: Partial<UserFormData> = {
+        nama: editData.nama,
+        email: editData.email,
+        role: editData.role
+      };
+      
+      // Hanya kirim password jika diisi
+      if (editData.password) {
+        updatePayload.password = editData.password;
+      }
+
+      const result = await updateUserApi(editUser.id, updatePayload);
+      
+      if (result.success) {
+        showToast('success', `User "${editData.nama}" berhasil diupdate!`);
+        closeEditModal();
+        fetchUsers(currentPage);
+      }
+    } catch (err: any) {
+      console.error('Error updating user:', err);
+      setEditError(err.response?.data?.message || 'Gagal mengupdate user');
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  // Konfirmasi delete user
+  const confirmDelete = (user: UserType) => {
+    setDeleteConfirm({ show: true, user });
+  };
+
+  // Hapus user
+  const handleDelete = async () => {
+    if (!deleteConfirm.user) return;
+
+    try {
+      setDeleting(true);
+      const result = await deleteUserApi(deleteConfirm.user.id);
+      
+      if (result.success) {
+        showToast('success', `User "${deleteConfirm.user.nama}" berhasil dihapus!`);
+        setDeleteConfirm({ show: false, user: null });
+        fetchUsers(currentPage);
+      }
+    } catch (err: any) {
+      console.error('Error deleting user:', err);
+      showToast('error', err.response?.data?.message || 'Gagal menghapus user');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  // Show toast notification
+  const showToast = (type: 'success' | 'error', message: string) => {
+    setToast({ type, message });
+    setTimeout(() => setToast(null), 4000);
+  };
+
   // Helper untuk warna badge role
   const getRoleBadge = (role: string) => {
     switch (role) {
@@ -147,6 +265,26 @@ export const UsersPage = () => {
           </button>
         </div>
       </div>
+
+      {/* Toast Notification */}
+      {toast && (
+        <div className={`fixed top-4 right-4 z-50 p-4 rounded-xl shadow-lg border max-w-md animate-slide-in-right ${
+          toast.type === 'success' 
+            ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
+            : 'bg-red-50 border-red-200 text-red-800'
+        }`}>
+          <div className="flex items-center gap-3">
+            <span className="text-xl">{toast.type === 'success' ? '✅' : '⚠️'}</span>
+            <p className="text-sm font-medium">{toast.message}</p>
+            <button 
+              onClick={() => setToast(null)}
+              className="ml-auto text-slate-400 hover:text-slate-600"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Form Tambah User */}
       {showForm && (
@@ -285,12 +423,13 @@ export const UsersPage = () => {
                 <th className="py-3 px-4">Role</th>
                 <th className="py-3 px-4">Status</th>
                 <th className="py-3 px-4">Terdaftar</th>
+                <th className="py-3 px-4 w-32">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading && users.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-slate-400">
+                  <td colSpan={7} className="py-12 text-center text-slate-400">
                     <div className="flex flex-col items-center gap-2">
                       <span className="inline-block w-6 h-6 border-2 border-slate-300 border-t-blue-600 rounded-full animate-spin"></span>
                       Memuat data user...
@@ -299,7 +438,7 @@ export const UsersPage = () => {
                 </tr>
               ) : error ? (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-red-500">
+                  <td colSpan={7} className="py-12 text-center text-red-500">
                     <div className="flex flex-col items-center gap-2">
                       <span className="text-2xl">⚠️</span>
                       {error}
@@ -308,7 +447,7 @@ export const UsersPage = () => {
                 </tr>
               ) : users.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-slate-400">
+                  <td colSpan={7} className="py-12 text-center text-slate-400">
                     Belum ada data user.
                   </td>
                 </tr>
@@ -335,6 +474,24 @@ export const UsersPage = () => {
                       </span>
                     </td>
                     <td className="py-3 px-4 text-slate-500">{formatDate(user.created_at)}</td>
+                    <td className="py-3 px-4">
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => openEditModal(user)}
+                          className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 p-1.5 rounded-lg transition-colors cursor-pointer"
+                          title="Edit User"
+                        >
+                          ✏️
+                        </button>
+                        <button
+                          onClick={() => confirmDelete(user)}
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50 p-1.5 rounded-lg transition-colors cursor-pointer"
+                          title="Hapus User"
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))
               )}
@@ -391,6 +548,171 @@ export const UsersPage = () => {
           </div>
         </div>
       </div>
+
+      {/* Modal Edit User */}
+      {editUser && (
+        <div className="fixed inset-0 bg-black/50 z-40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full animate-scale-in">
+            <div className="p-5 border-b border-slate-200">
+              <h2 className="font-semibold text-slate-800 flex items-center gap-2">
+                <span className="w-2 h-2 bg-amber-500 rounded-full inline-block"></span>
+                Edit User
+              </h2>
+            </div>
+            
+            <form onSubmit={handleSaveEdit} className="p-5">
+              {editError && (
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg">
+                  ⚠ {editError}
+                </div>
+              )}
+
+              <div className="space-y-4">
+                {/* Nama */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                    Nama Lengkap <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    name="nama"
+                    value={editData.nama}
+                    onChange={handleEditChange}
+                    className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                    required
+                  />
+                </div>
+
+                {/* Email */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                    Email <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="email"
+                    name="email"
+                    value={editData.email}
+                    onChange={handleEditChange}
+                    className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                    required
+                  />
+                </div>
+
+                {/* Password (opsional) */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                    Password Baru <span className="text-slate-400">(kosongkan jika tidak diubah)</span>
+                  </label>
+                  <input
+                    type="password"
+                    name="password"
+                    value={editData.password}
+                    onChange={handleEditChange}
+                    placeholder="Min. 6 karakter"
+                    className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                    minLength={6}
+                  />
+                </div>
+
+                {/* Role */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                    Role <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    name="role"
+                    value={editData.role}
+                    onChange={handleEditChange}
+                    className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white"
+                    required
+                  >
+                    <option value="admin">Administrator</option>
+                    <option value="operator">Operator</option>
+                    <option value="viewer">Viewer</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Form Actions */}
+              <div className="flex gap-3 mt-5 pt-4 border-t border-slate-100">
+                <button
+                  type="submit"
+                  disabled={savingEdit}
+                  className="bg-amber-500 hover:bg-amber-600 text-white font-semibold text-sm px-6 py-2.5 rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {savingEdit ? (
+                    <>
+                      <span className="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                      Menyimpan...
+                    </>
+                  ) : (
+                    '✓ Simpan Perubahan'
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={closeEditModal}
+                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-sm px-5 py-2.5 rounded-lg transition-colors cursor-pointer"
+                >
+                  Batal
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Konfirmasi Delete */}
+      {deleteConfirm.show && deleteConfirm.user && (
+        <div className="fixed inset-0 bg-black/50 z-40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full animate-scale-in">
+            <div className="p-5">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center text-red-600 text-lg">
+                  ⚠️
+                </div>
+                <h3 className="font-semibold text-slate-800">Konfirmasi Hapus User</h3>
+              </div>
+              
+              <p className="text-sm text-slate-600 mb-1">
+                Apakah Anda yakin ingin menghapus user berikut?
+              </p>
+              <p className="text-sm font-semibold text-slate-800 mb-4">
+                {deleteConfirm.user.nama} ({deleteConfirm.user.email})
+              </p>
+              
+              <p className="text-xs text-red-600 mb-4">
+                ⚠ Tindakan ini tidak dapat dibatalkan.
+              </p>
+            </div>
+
+            {/* Actions */}
+            <div className="p-5 border-t border-slate-200 flex gap-3">
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="bg-red-600 hover:bg-red-700 text-white font-semibold text-sm px-5 py-2.5 rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {deleting ? (
+                  <>
+                    <span className="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                    Menghapus...
+                  </>
+                ) : (
+                  '🗑️ Ya, Hapus'
+                )}
+              </button>
+              <button
+                onClick={() => setDeleteConfirm({ show: false, user: null })}
+                className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-sm px-5 py-2.5 rounded-lg transition-colors cursor-pointer"
+                disabled={deleting}
+              >
+                Batal
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
