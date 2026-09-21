@@ -2,6 +2,15 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTheme } from '../../hooks/useTheme';
 
+const navItems = [
+  { label: 'Beranda', href: '#beranda' },
+  { label: 'Laboratorium', href: '#laboratorium' },
+  { label: 'Regulasi', href: '#regulasi' },
+  { label: 'Registrasi', href: '#registrasi' },
+  { label: 'Data', href: '#data' },
+  { label: 'Sertifikasi', href: '#sertifikasi' },
+];
+
 export const Navbar = () => {
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
   const { theme, toggleTheme } = useTheme();
@@ -16,37 +25,36 @@ export const Navbar = () => {
     <header className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 sticky top-0 z-50 transition-colors">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
-          
+
           {/* Logo & Judul Brand */}
-          <Link to="/" className="flex items-center space-x-3">
+          <Link to="/" className="flex items-center space-x-3 shrink-0">
             <div className="bg-blue-600 text-white font-bold px-2.5 py-1 rounded-lg text-sm">
-              BPPMHKP
+              MUTIARA
             </div>
-            <span className="font-bold text-slate-900 dark:text-white text-lg hidden sm:inline">
-              Portal Layanan Mutu
+            <span className="font-bold text-slate-900 dark:text-white text-lg hidden lg:inline">
+              Monitoring Jaminan Mutu
             </span>
           </Link>
 
           {/* Menu Navigasi Tengah */}
-          <nav className="hidden md:flex space-x-8 text-sm font-medium text-slate-600 dark:text-slate-300">
-            <a href="#beranda" className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
-              Beranda
-            </a>
-            <a href="#layanan" className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
-              Layanan
-            </a>
-            <a href="#tentang" className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
-              Tentang Kami
-            </a>
+          <nav className="hidden md:flex items-center space-x-5 lg:space-x-7 text-sm font-medium text-slate-600 dark:text-slate-300">
+            {navItems.map((item) => (
+              <a
+                key={item.href}
+                href={item.href}
+                className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors whitespace-nowrap"
+              >
+                {item.label}
+              </a>
+            ))}
           </nav>
 
           {/* Tombol Aksi Kanan (Dinamis) */}
           <div className="flex items-center space-x-3 sm:space-x-4">
-            
+
             {/* Tombol Toggle Dark Mode */}
             <button
               onClick={toggleTheme}
-              p-2
               className="p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
               title={theme === 'dark' ? 'Ubah ke Light Mode' : 'Ubah ke Dark Mode'}
               aria-label="Toggle Theme"
@@ -68,7 +76,7 @@ export const Navbar = () => {
             {isLoggedIn ? (
               <Link
                 to="/dashboard"
-                className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors shadow-xs"
+                className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors shadow-xs whitespace-nowrap"
               >
                 Ke Dashboard
               </Link>
@@ -84,6 +92,21 @@ export const Navbar = () => {
 
         </div>
       </div>
+
+      {/* Menu Navigasi Mobile (scroll horizontal) */}
+      <nav className="md:hidden border-t border-slate-100 dark:border-slate-800 overflow-x-auto">
+        <div className="flex items-center gap-5 px-4 py-2.5 text-sm font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap">
+          {navItems.map((item) => (
+            <a
+              key={item.href}
+              href={item.href}
+              className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+            >
+              {item.label}
+            </a>
+          ))}
+        </div>
+      </nav>
     </header>
   );
 };

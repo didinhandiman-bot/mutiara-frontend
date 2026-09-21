@@ -3,6 +3,15 @@
 /* Beritahu Tailwind v4 untuk memicu class dark jika tag <html> memiliki class="dark" */
 @variant dark (&:where(.dark, .dark *));
 
+/* Smooth scroll untuk navigasi antar section & offset navbar sticky */
+html {
+  scroll-behavior: smooth;
+}
+
+section[id] {
+  scroll-margin-top: 5rem;
+}
+
 /* Variable CSS kustom milik Anda */
 :root {
   --border: #e5e7eb;

@@ -1,6 +1,10 @@
 import { Navbar } from '../components/layout/Navbar';
 import { HeroSection } from '../sections/HeroSection';
-import { ServicesSection } from '../sections/ServicesSection';
+import { LaboratoriumSection } from '../sections/LaboratoriumSection';
+import { RegulasiSection } from '../sections/RegulasiSection';
+import { RegistrasiSection } from '../sections/RegistrasiSection';
+import { DataSection } from '../sections/DataSection';
+import { SertifikasiSection } from '../sections/SertifikasiSection';
 import { Footer } from '../components/layout/Footer';
 
 export const LandingPage = () => {
@@ -12,7 +16,11 @@ export const LandingPage = () => {
       {/* 2. Konten Utama Landing Page */}
       <main className="flex-1">
         <HeroSection />
-        <ServicesSection />
+        <LaboratoriumSection />
+        <RegulasiSection />
+        <RegistrasiSection />
+        <DataSection />
+        <SertifikasiSection />
       </main>
 
       {/* 3. Footer */}
