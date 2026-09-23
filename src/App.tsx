@@ -5,6 +5,7 @@ import { LayananPage } from './pages/LayananPage';
 import { ProfilPage } from './pages/ProfilPage';
 import { DashboardLayout } from './layouts/DashboardLayout';
 import { DashboardPage } from './pages/DashboardPage';
+import { IotMonitoringPage } from './pages/IotMonitoringPage';
 import { UsersPage } from './pages/UsersPage';
 import { ProtectedRoute } from './components/common/ProtectedRoute';
 
@@ -22,6 +23,8 @@ export function App() {
         <Route element={<ProtectedRoute />}>
           <Route element={<DashboardLayout />}>
             <Route path="/dashboard" element={<DashboardPage />} />
+            {/* Rute Monitoring IoT (Realtime) */}
+            <Route path="/iot-monitoring" element={<IotMonitoringPage />} />
             {/* Rute Layanan Saya yang Baru Ditambahkan */}
             <Route path="/layanan" element={<LayananPage />} />
             <Route path="/users" element={<UsersPage />} />
