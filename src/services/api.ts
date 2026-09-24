@@ -37,7 +37,7 @@ export interface UserFormData {
   nama: string;
   email: string;
   password?: string;
-  role: 'admin' | 'operator' | 'viewer';
+  role: 'admin' | 'eksekutif' | 'pembina' | 'dalwas';
 }
 
 export interface PaginationMeta {

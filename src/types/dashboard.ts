@@ -1,4 +1,4 @@
-export type UserRole = 'Admin' | 'Eksekutif' | 'Pengawas' | 'Pembina';
+export type UserRole = 'Admin' | 'Eksekutif' | 'Pembina' | 'Dalwas';
 
 export interface NavItem {
   id: string;

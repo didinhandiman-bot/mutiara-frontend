@@ -2,11 +2,11 @@ import type { NavItem, UserRole } from '../types/dashboard';
 
 export const ROUTE_ROLES: Record<string, UserRole[]> = {
   pembinaan: ['Admin', 'Eksekutif', 'Pembina'],
-  pengawasan: ['Admin', 'Eksekutif', 'Pengawas', 'Pembina'],
+  pengawasan: ['Admin', 'Eksekutif', 'Dalwas'],
   'iot-monitoring': ['Admin', 'Eksekutif'],
   eksekutif: ['Admin', 'Eksekutif'],
   users: ['Admin'],
-  profil: ['Admin', 'Eksekutif', 'Pengawas', 'Pembina'],
+  profil: ['Admin', 'Eksekutif', 'Dalwas', 'Pembina'],
 };
 
 export const navItems: NavItem[] = [

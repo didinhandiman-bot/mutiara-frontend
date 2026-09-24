@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getUsersApi, createUserApi, updateUserApi, deleteUserApi, type UserFormData, type User as UserType } from '../services/api';
+import { normalizeRole, toFormRole } from '../utils/role';
 
 export const UsersPage = () => {
   // Data state
@@ -19,7 +20,7 @@ export const UsersPage = () => {
     nama: '',
     email: '',
     password: '',
-    role: 'operator'
+    role: 'admin'
   });
   const [formError, setFormError] = useState<string | null>(null);
   const [formSuccess, setFormSuccess] = useState<string | null>(null);
@@ -31,7 +32,7 @@ export const UsersPage = () => {
     nama: '',
     email: '',
     password: '',
-    role: 'operator'
+    role: 'admin'
   });
   const [savingEdit, setSavingEdit] = useState<boolean>(false);
   const [editError, setEditError] = useState<string | null>(null);
@@ -104,7 +105,7 @@ export const UsersPage = () => {
         setFormSuccess(`User "${formData.nama}" berhasil ditambahkan!`);
         
         // Reset form & refresh list
-        setFormData({ nama: '', email: '', password: '', role: 'operator' });
+        setFormData({ nama: '', email: '', password: '', role: 'admin' });
         setShowForm(false);
         setCurrentPage(1);
         fetchUsers(1);
@@ -127,7 +128,7 @@ export const UsersPage = () => {
       nama: user.nama,
       email: user.email,
       password: '', // Kosongkan untuk keamanan
-      role: user.role as 'admin' | 'operator' | 'viewer'
+      role: toFormRole(user.role)
     });
     setEditError(null);
   };
@@ -135,7 +136,7 @@ export const UsersPage = () => {
   // Close modal edit
   const closeEditModal = () => {
     setEditUser(null);
-    setEditData({ nama: '', email: '', password: '', role: 'operator' });
+    setEditData({ nama: '', email: '', password: '', role: 'admin' });
     setEditError(null);
   };
 
@@ -218,14 +219,17 @@ export const UsersPage = () => {
   };
 
   // Helper untuk warna badge role
-  const getRoleBadge = (role: string) => {
+  const getRoleBadge = (rawRole: string) => {
+    const role = normalizeRole(rawRole) || rawRole;
     switch (role) {
-      case 'admin':
+      case 'Admin':
         return 'bg-purple-100 text-purple-800 border-purple-200';
-      case 'operator':
+      case 'Eksekutif':
         return 'bg-blue-100 text-blue-800 border-blue-200';
-      case 'viewer':
-        return 'bg-slate-100 text-slate-800 border-slate-200';
+      case 'Pembina':
+        return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+      case 'Dalwas':
+        return 'bg-amber-100 text-amber-800 border-amber-200';
       default:
         return 'bg-slate-100 text-slate-800 border-slate-200';
     }
@@ -371,9 +375,10 @@ export const UsersPage = () => {
                   className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white"
                   required
                 >
-                  <option value="admin">Administrator</option>
-                  <option value="operator">Operator</option>
-                  <option value="viewer">Viewer</option>
+                  <option value="admin">Admin</option>
+                  <option value="eksekutif">Eksekutif</option>
+                  <option value="pembina">Pembina</option>
+                  <option value="dalwas">Dalwas</option>
                 </select>
               </div>
             </div>
@@ -400,7 +405,7 @@ export const UsersPage = () => {
                   setShowForm(false);
                   setFormError(null);
                   setFormSuccess(null);
-                  setFormData({ nama: '', email: '', password: '', role: 'operator' });
+                  setFormData({ nama: '', email: '', password: '', role: 'admin' });
                 }}
                 className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-sm px-5 py-2.5 rounded-lg transition-colors cursor-pointer"
               >
@@ -465,7 +470,7 @@ export const UsersPage = () => {
                       <span
                         className={`inline-block px-2.5 py-1 text-xs font-semibold rounded-md border ${getRoleBadge(user.role)}`}
                       >
-                        {user.role.charAt(0).toUpperCase() + user.role.slice(1)}
+                        {normalizeRole(user.role) || user.role}
                       </span>
                     </td>
                     <td className="py-3 px-4">
@@ -626,9 +631,10 @@ export const UsersPage = () => {
                     className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white"
                     required
                   >
-                    <option value="admin">Administrator</option>
-                    <option value="operator">Operator</option>
-                    <option value="viewer">Viewer</option>
+                    <option value="admin">Admin</option>
+                    <option value="eksekutif">Eksekutif</option>
+                    <option value="pembina">Pembina</option>
+                    <option value="dalwas">Dalwas</option>
                   </select>
                 </div>
               </div>

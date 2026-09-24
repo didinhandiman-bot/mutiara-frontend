@@ -6,16 +6,31 @@ const ROLE_ALIASES: Record<string, UserRole> = {
   eksekutif: 'Eksekutif',
   executive: 'Eksekutif',
   exec: 'Eksekutif',
-  pengawas: 'Pengawas',
-  supervisor: 'Pengawas',
-  operator: 'Pengawas',
   pembina: 'Pembina',
   viewer: 'Pembina',
+  dalwas: 'Dalwas',
+  pengawas: 'Dalwas',
+  supervisor: 'Dalwas',
+  operator: 'Dalwas',
 };
 
 export const normalizeRole = (role?: string | null): UserRole | null => {
   if (!role) return null;
   return ROLE_ALIASES[role.trim().toLowerCase()] ?? null;
+};
+
+const ROLE_FORM_VALUES: Record<UserRole, 'admin' | 'eksekutif' | 'pembina' | 'dalwas'> = {
+  Admin: 'admin',
+  Eksekutif: 'eksekutif',
+  Pembina: 'pembina',
+  Dalwas: 'dalwas',
+};
+
+export const toFormRole = (
+  role?: string | null
+): 'admin' | 'eksekutif' | 'pembina' | 'dalwas' => {
+  const normalized = normalizeRole(role);
+  return normalized ? ROLE_FORM_VALUES[normalized] : 'admin';
 };
 
 export const getCurrentUserRole = (): UserRole | null => {
