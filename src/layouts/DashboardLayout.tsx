@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import { Outlet, useNavigate, Link, useLocation } from 'react-router-dom';
 import { logoutUser, type UserProfile } from '../services/authService';
 import { navItems } from '../config/navigation';
 import { getCurrentUserRole, hasRoleAccess } from '../utils/role';
+import { RouteFallback } from '../components/common/RouteFallback';
 import type { NavItem } from '../types/dashboard';
 
 export const DashboardLayout = () => {
@@ -196,7 +197,14 @@ export const DashboardLayout = () => {
 
         {/* Dynamic Main Content (DashboardPage / LayananPage) */}
         <main className="p-4 md:p-6 flex-1 overflow-y-auto">
-          <Outlet />
+          {/*
+           * Suspense lokal: hanya area konten yang menampilkan fallback.
+           * Sidebar & header tetap ter-render (tidak ikut unmount) sehingga
+           * perpindahan antar halaman dashboard tidak flicker.
+           */}
+          <Suspense fallback={<RouteFallback />}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
     </div>
