@@ -67,10 +67,10 @@ export const navItems: NavItem[] = [
     path: '/users',
     roles: ROUTE_ROLES.users,
   },
-  {
-    id: 'profil',
-    label: 'Profil Saya',
-    path: '/profil',
-    roles: ROUTE_ROLES.profil,
-  },
+  // {
+  //   id: 'profil',
+  //   label: 'Profil Saya',
+  //   path: '/profil',
+  //   roles: ROUTE_ROLES.profil,
+  // },
 ];

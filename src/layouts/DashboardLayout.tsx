@@ -67,7 +67,7 @@ export const DashboardLayout = () => {
         {/* Header Sidebar */}
         <div className="flex items-center justify-between mb-6 px-2">
           <h2 className="text-xl font-bold text-white tracking-wide">
-            BPPMHKP App
+            MUTIARA
           </h2>
           {/* Tombol Tutup Sidebar (Mobile) */}
           <button
