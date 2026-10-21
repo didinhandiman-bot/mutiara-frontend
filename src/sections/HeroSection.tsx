@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import heroBg from '../assets/hero-bg.jpeg';
 
 export const HeroSection = () => {
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
@@ -13,46 +14,60 @@ export const HeroSection = () => {
   return (
     <section
       id="beranda"
-      className="bg-gradient-to-b from-blue-50 via-slate-50 to-white dark:from-slate-900 dark:via-slate-900 dark:to-slate-950 py-20 px-4 transition-colors duration-300"
+      className="relative w-full min-h-[580px] lg:min-h-[640px] flex items-center bg-white dark:bg-slate-950 overflow-hidden transition-colors duration-300"
     >
-      <div className="max-w-4xl mx-auto text-center space-y-6">
+      {/* Latar Belakang */}
+      <div className="absolute inset-0 z-0 pointer-events-none select-none">
+        <img
+          src={heroBg}
+          alt="Latar Belakang MUTIARA"
+          className="w-full h-full object-cover object-right"
+        />
+      </div>
 
-        {/* Badge Aplikasi */}
-        <span className="inline-block bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 text-xs font-semibold px-3 py-1 rounded-full uppercase tracking-wider transition-colors">
-          Aplikasi MUTIARA
-        </span>
+      {/* Overlay Mobile */}
+      <div className="absolute inset-0 z-0 bg-white/80 dark:bg-slate-950/85 sm:bg-transparent transition-colors" />
 
-        {/* Headline */}
-        <h1 className="text-4xl md:text-5xl font-extrabold text-slate-900 dark:text-white leading-tight transition-colors">
-          Monitoring Jaminan Mutu{' '}
-          <span className="text-blue-600 dark:text-blue-400">Terintegrasi Hulu-Hilir</span>
-        </h1>
+      {/* Konten Teks */}
+      <div className="relative z-10 max-w-7xl mx-auto px-6 lg:px-12 w-full py-20">
+        <div className="max-w-md lg:max-w-lg w-full lg:w-[45%] text-left space-y-6">
+          {/* Badge Aplikasi */}
+          <span className="inline-block bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 text-xs font-semibold px-3 py-1 rounded-full uppercase tracking-wider transition-colors">
+            Aplikasi MUTIARA
+          </span>
 
-        {/* Deskripsi */}
-        <p className="text-slate-600 dark:text-slate-300 text-lg max-w-2xl mx-auto transition-colors">
-          Aplikasi MUTIARA menyajikan ringkasan informasi jaminan mutu perikanan — mulai dari
-          profil laboratorium, regulasi, registrasi mitra, hingga data kapal dan pelaku usaha.
-        </p>
+          {/* Headline */}
+          <h1 className="text-3xl sm:text-4xl lg:text-[40px] font-extrabold text-slate-900 dark:text-white leading-tight transition-colors text-left">
+            Monitoring Jaminan Mutu{' '}
+            <span className="block text-blue-600 dark:text-blue-400">Terintegrasi Hulu-Hilir</span>
+          </h1>
 
-        {/* Tombol Aksi */}
-        <div className="flex flex-col sm:flex-row gap-4 justify-center pt-8">
-          {/* Tombol Utama (Dinamis) */}
-          <Link
-            to={isLoggedIn ? '/dashboard' : '/login'}
-            className="bg-blue-600 hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-500 text-white font-medium px-6 py-3 rounded-lg shadow-md transition-all text-center"
-          >
-            {isLoggedIn ? 'Ke Dashboard' : 'Masuk ke Aplikasi'}
-          </Link>
+          {/* Deskripsi */}
+          <p className="max-w-md text-sm sm:text-base text-slate-600 dark:text-slate-300 leading-relaxed text-left transition-colors">
+            Aplikasi MUTIARA menyajikan ringkasan informasi jaminan mutu perikanan — mulai dari
+            profil laboratorium, regulasi, registrasi mitra, hingga data kapal dan pelaku usaha.
+          </p>
 
-          {/* Tombol Sekunder */}
-          <a
-            href="#data"
-            className="bg-white hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 font-medium px-6 py-3 rounded-lg transition-all text-center"
-          >
-            Lihat Ringkasan Data
-          </a>
+          {/* Tombol Aksi */}
+          <div className="flex flex-wrap items-center gap-3 sm:gap-4 justify-start pt-8">
+            {/* Tombol Utama (Dinamis) */}
+            <Link
+              to={isLoggedIn ? '/dashboard' : '/login'}
+              className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-500 text-white font-medium px-6 py-3 rounded-lg shadow-md transition-all text-center"
+            >
+              {isLoggedIn ? 'Ke Dashboard' : 'Masuk ke Aplikasi'}
+              <span aria-hidden="true">→</span>
+            </Link>
+
+            {/* Tombol Sekunder */}
+            <a
+              href="#data"
+              className="bg-white hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 font-medium px-6 py-3 rounded-lg transition-all text-center"
+            >
+              Lihat Ringkasan Data
+            </a>
+          </div>
         </div>
-
       </div>
     </section>
   );
