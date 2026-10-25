@@ -6,68 +6,9 @@
 // ==========================================================================
 
 // --------------------------------------------------------------------------
-// Section 3 — Regulasi Nasional & Internasional
-// --------------------------------------------------------------------------
-export interface Regulation {
-  jenis: 'Nasional' | 'Internasional';
-  kode: string;
-  judul: string;
-  deskripsi: string;
-}
-
-export const regulations: Regulation[] = [
-  {
-    jenis: 'Nasional',
-    kode: 'UU No. 45 Tahun 2009',
-    judul: 'Perubahan atas UU No. 31 Tahun 2004 tentang Perikanan',
-    deskripsi: 'Dasar hukum pengelolaan dan pengendalian mutu hasil perikanan di Indonesia.',
-  },
-  {
-    jenis: 'Nasional',
-    kode: 'UU No. 18 Tahun 2012',
-    judul: 'Undang-Undang Pangan',
-    deskripsi: 'Menjamin keamanan, mutu, dan gizi pangan yang beredar dan diperdagangkan.',
-  },
-  {
-    jenis: 'Nasional',
-    kode: 'PP No. 27 Tahun 2021',
-    judul: 'Penyelenggaraan Bidang Kelautan dan Perikanan',
-    deskripsi: 'Mengatur penyelenggaraan mutu, pengolahan, dan pemasaran hasil perikanan.',
-  },
-  {
-    jenis: 'Nasional',
-    kode: 'Permen KP',
-    judul: 'Jaminan Mutu dan Keamanan Hasil Perikanan',
-    deskripsi: 'Ketentuan teknis sertifikasi, pengujian, dan pengawasan mutu hasil perikanan.',
-  },
-  {
-    jenis: 'Internasional',
-    kode: 'CAC/RCP 52-2003',
-    judul: 'Codex Code of Practice for Fish and Fishery Products',
-    deskripsi: 'Pedoman internasional praktik higiene pengolahan hasil perikanan (Codex Alimentarius).',
-  },
-  {
-    jenis: 'Internasional',
-    kode: '(EC) No. 853/2004',
-    judul: 'EU Food Hygiene Regulation — Products of Animal Origin',
-    deskripsi: 'Persyaratan higiene pangan asal hewan untuk ekspor ke Uni Eropa.',
-  },
-  {
-    jenis: 'Internasional',
-    kode: '21 CFR Part 123',
-    judul: 'US FDA — Seafood HACCP Regulation',
-    deskripsi: 'Kewajiban penerapan HACCP bagi fasilitas pengolahan hasil laut yang masuk pasar AS.',
-  },
-  {
-    jenis: 'Internasional',
-    kode: 'WTO SPS Agreement',
-    judul: 'Agreement on Sanitary and Phytosanitary Measures',
-    deskripsi: 'Kerangka ukuran kesehatan hewan/ikan dan keamanan pangan dalam perdagangan internasional.',
-  },
-];
-
-// --------------------------------------------------------------------------
 // Section 4 — Persyaratan Noreg & UPI yang telah memiliki Noreg
+// CATATAN: Data regulasi (Section 3) kini dinamis dari backend
+// melalui src/services/regulasiService.ts
 // --------------------------------------------------------------------------
 export interface NoregRequirement {
   negara: string;
