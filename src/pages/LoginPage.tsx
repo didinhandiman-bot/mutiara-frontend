@@ -57,7 +57,7 @@ export const LoginPage = () => {
         {/* Header Logo & Judul */}
         <div className="text-center">
           <div className="inline-block bg-blue-600 text-white font-bold px-3 py-1.5 rounded-lg text-lg mb-3">
-            BPPMHKP
+            MUTIARA
           </div>
           <h2 className="text-2xl font-bold text-slate-900">Masuk Akun</h2>
           <p className="text-sm text-slate-600 mt-1">

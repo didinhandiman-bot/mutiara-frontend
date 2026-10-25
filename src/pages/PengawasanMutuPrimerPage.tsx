@@ -1,10 +1,99 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { pengawasanData } from '../mocks/dashboardData';
 import type {
   GradeSmkhp,
   JadwalSurveilans,
   StatusLogSmkhp,
 } from '../types/dashboard';
+// Tipe dipakai ulang dari section landing agar struktur respons API tetap satu sumber
+// (type-only, ikut terhapus saat compile sehingga tidak menambah dependensi runtime)
+import type { SertifikasiKpiData } from '../sections/SertifikasiSection';
+
+// ==========================================================================
+// KPI Sertifikasi agregat — endpoint publik mutiara-backend
+//   GET /api/v1/public/sertifikasi-kpi?year=<tahun|all>
+// ==========================================================================
+
+// Base URL backend. Prioritas:
+// 1. VITE_API_BASE_URL
+// 2. Turunan dari VITE_API_URL_AUTH (akhiran /auth dibuang)
+// 3. Fallback backend lokal (port 5007)
+const AUTH_URL = import.meta.env.VITE_API_URL_AUTH as string | undefined;
+
+const API_BASE_URL = (
+  (import.meta.env.VITE_API_BASE_URL as string | undefined) ||
+  AUTH_URL?.replace(/\/auth\/?$/, '') ||
+  'http://localhost:5007'
+).replace(/\/+$/, '');
+
+// Opsi dropdown "Rentang Waktu / Tahun" pada header halaman
+const TAHUN_OPTIONS = ['2026', '2025', '2024', 'all'] as const;
+type TahunOption = (typeof TAHUN_OPTIONS)[number];
+
+const TAHUN_LABEL: Record<TahunOption, string> = {
+  '2026': 'Tahun 2026',
+  '2025': 'Tahun 2025',
+  '2024': 'Tahun 2024',
+  all: 'Semua Tahun',
+};
+
+// Data lokal cadangan: dipakai saat API tidak terjangkau agar halaman tetap tampil penuh
+const KPI_FALLBACK: SertifikasiKpiData = {
+  total_nasional: 40747,
+  pasca_panen: { total: 37766, items: { SKP: 13624, HACCP: 24142, SPDI: 0 } },
+  primer: {
+    total: 2981,
+    items: { CPIB: 172, CBIB: 741, CPPIB: 31, CPOIB: 33, CDOIB: 23, CPIB_KAPAL: 1981 },
+  },
+  selected_year: 'all',
+  updated_at: '2026-10-25T04:26:08.834Z',
+};
+
+type SumberKpi = 'memuat' | 'api' | 'lokal';
+
+const sumberKpiLabel: Record<SumberKpi, string> = {
+  memuat: 'Memuat data…',
+  api: 'Live · API publik',
+  lokal: 'Data lokal (fallback)',
+};
+
+// Format angka dengan pemisah ribuan ala Indonesia: 40.747, 13.624
+const idNumber = new Intl.NumberFormat('id-ID');
+
+const formatAngka = (value: number | null | undefined): string => {
+  const num = Number(value);
+  return idNumber.format(Number.isFinite(num) ? Math.max(0, Math.trunc(num)) : 0);
+};
+
+const idDateTime = new Intl.DateTimeFormat('id-ID', {
+  dateStyle: 'medium',
+  timeStyle: 'short',
+});
+
+// Format timestamp ISO dari API menjadi waktu yang terbaca
+const formatWaktu = (value: string | null | undefined): string | null => {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : idDateTime.format(date);
+};
+
+// Angka aman: `undefined` bila field tidak ikut dikirim backend
+const angkaAm = (value: number | undefined): number =>
+  typeof value === 'number' && Number.isFinite(value) ? value : 0;
+
+// Chip 9 sertifikasi: urut sesuai kebutuhan tampilan (primer lalu pascapanen)
+const chipStyle = {
+  primer: 'border-indigo-200 bg-indigo-50 text-indigo-700',
+  pasca: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+} as const;
+
+type KategoriChip = keyof typeof chipStyle;
+
+interface ChipSertifikasi {
+  kode: string;
+  jumlah: number;
+  klaster: KategoriChip;
+}
 
 type KategoriJadwal = 'Upcoming' | 'Due Soon' | 'Overdue' | 'Selesai';
 
@@ -100,6 +189,52 @@ export const PengawasanMutuPrimerPage = () => {
   const [activeFilter, setActiveFilter] = useState<FilterJadwal>('Semua');
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
+  // Filter tahun pada header; ikut menyegarkan seluruh angka agregasi sertifikasi
+  const [selectedYear, setSelectedYear] = useState<TahunOption>('2026');
+  const [kpi, setKpi] = useState<SertifikasiKpiData>(KPI_FALLBACK);
+  const [sumberKpi, setSumberKpi] = useState<SumberKpi>('memuat');
+
+  // Tarik KPI sertifikasi; ganti tahun langsung memicu request baru.
+  // Bila gagal, state tetap diisi KPI_FALLBACK supaya halaman tidak pernah blank.
+  useEffect(() => {
+    let active = true;
+    const requestUrl = `${API_BASE_URL}/api/v1/public/sertifikasi-kpi?year=${encodeURIComponent(
+      selectedYear
+    )}`;
+
+    // Dibungkus setTimeout agar tidak memanggil setState secara sinkron di badan effect
+    const timer = window.setTimeout(() => {
+      setSumberKpi('memuat');
+
+      fetch(requestUrl, { headers: { Accept: 'application/json' } })
+        .then(async (res) => {
+          if (!res.ok) throw new Error(`Permintaan gagal (HTTP ${res.status})`);
+          const payload = (await res.json()) as {
+            success?: boolean;
+            data?: SertifikasiKpiData;
+          };
+          if (!payload?.success || !payload.data) throw new Error('Respons API tidak valid');
+          return payload.data;
+        })
+        .then((data) => {
+          if (!active) return;
+          setKpi(data);
+          setSumberKpi('api');
+        })
+        .catch((err: unknown) => {
+          console.error('Gagal memuat KPI sertifikasi, memakai data lokal:', err);
+          if (!active) return;
+          setKpi(KPI_FALLBACK);
+          setSumberKpi('lokal');
+        });
+    }, 0);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [selectedYear]);
+
   const jadwalDenganKategori = jadwalSurveilans
     .map((jadwal) => ({ ...jadwal, kategori: classifyJadwal(jadwal) }))
     .sort((a, b) => a.tanggal.localeCompare(b.tanggal));
@@ -129,6 +264,33 @@ export const PengawasanMutuPrimerPage = () => {
     (sum, item) => sum + item.jumlah,
     0
   );
+
+  // Basis total unit yang masuk pengawasan mutu UPI ekspor: gabungan HACCP + SKP
+  const jumlahHaccp = angkaAm(kpi.pasca_panen.items.HACCP);
+  const jumlahSkp = angkaAm(kpi.pasca_panen.items.SKP);
+  const basisPengawasan = jumlahHaccp + jumlahSkp;
+
+  // Ringkasan 9 sertifikasi (primer: 6, pascapanen: 3)
+  const chipsSertifikasi: ChipSertifikasi[] = [
+    { kode: 'CPIB', jumlah: angkaAm(kpi.primer.items.CPIB), klaster: 'primer' },
+    { kode: 'CBIB', jumlah: angkaAm(kpi.primer.items.CBIB), klaster: 'primer' },
+    { kode: 'CPIB Kapal', jumlah: angkaAm(kpi.primer.items.CPIB_KAPAL), klaster: 'primer' },
+    { kode: 'CDOIB', jumlah: angkaAm(kpi.primer.items.CDOIB), klaster: 'primer' },
+    { kode: 'CPOIB', jumlah: angkaAm(kpi.primer.items.CPOIB), klaster: 'primer' },
+    { kode: 'CPPIB', jumlah: angkaAm(kpi.primer.items.CPPIB), klaster: 'primer' },
+    { kode: 'SKP', jumlah: jumlahSkp, klaster: 'pasca' },
+    { kode: 'HACCP', jumlah: jumlahHaccp, klaster: 'pasca' },
+    { kode: 'SPDI', jumlah: angkaAm(kpi.pasca_panen.items.SPDI), klaster: 'pasca' },
+  ];
+
+  const waktuPerbarui = formatWaktu(kpi.updated_at);
+
+  // Tahun yang benar-benar direpresentasikan angka di layar
+  // (saat fallback lokal dipakai, angkanya bersifat semua tahun)
+  const labelTahunAktif =
+    kpi.selected_year && kpi.selected_year in TAHUN_LABEL
+      ? TAHUN_LABEL[kpi.selected_year as TahunOption]
+      : TAHUN_LABEL[selectedYear];
 
   return (
     <div className="space-y-6">
@@ -160,12 +322,15 @@ export const PengawasanMutuPrimerPage = () => {
             </label>
             <select
               id="filter-periode"
-              defaultValue="2026"
-              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              value={selectedYear}
+              onChange={(event) => setSelectedYear(event.target.value as TahunOption)}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-100 cursor-pointer"
             >
-              <option value="2026">Tahun 2026</option>
-              <option value="q3">Kuartal III 2026</option>
-              <option value="q4">Kuartal IV 2026</option>
+              {TAHUN_OPTIONS.map((tahun) => (
+                <option key={tahun} value={tahun}>
+                  {TAHUN_LABEL[tahun]}
+                </option>
+              ))}
             </select>
           </div>
           <div className="flex items-center gap-2">
@@ -198,11 +363,20 @@ export const PengawasanMutuPrimerPage = () => {
           <div className="mt-4 flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
             <div>
               <p className="text-5xl font-bold tracking-tight md:text-6xl">
-                {totalSertifikasiAktif}
+                {formatAngka(kpi.total_nasional)}
               </p>
               <h2 className="mt-3 text-lg font-semibold md:text-xl">
                 Sertifikasi Aktif
               </h2>
+              {/* Sub-metrik: kontribusi klaster primer & pascapanen */}
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <span className="rounded-full bg-white/15 px-3 py-1 text-xs font-semibold backdrop-blur-sm">
+                  Primer · {formatAngka(kpi.primer.total)}
+                </span>
+                <span className="rounded-full bg-white/15 px-3 py-1 text-xs font-semibold backdrop-blur-sm">
+                  Pascapanen · {formatAngka(kpi.pasca_panen.total)}
+                </span>
+              </div>
               <p className="mt-2 max-w-xl text-sm leading-relaxed text-white/85">
                 Sebaran skema sertifikasi mutu primer dan pascapanen yang berlaku,
                 didampingi nomor registrasi (Noreg) eksportir.
@@ -221,8 +395,14 @@ export const PengawasanMutuPrimerPage = () => {
             </div>
           </div>
 
-          <p className="mt-6 text-xs text-white/70">
-            Sumber data: SIAP MUTU & Pusat Manajemen Mutu (Pus MM)
+          <p className="mt-6 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-white/70">
+            <span>Sumber data: SIAP MUTU & Pusat Manajemen Mutu (Pus MM)</span>
+            <span aria-hidden="true">·</span>
+            <span>{waktuPerbarui ? `Diperbarui ${waktuPerbarui}` : 'Pembaruan otomatis berkala'}</span>
+            <span aria-hidden="true">·</span>
+            <span className={sumberKpi === 'lokal' ? 'font-semibold text-amber-200' : ''}>
+              {sumberKpiLabel[sumberKpi]}
+            </span>
           </p>
         </section>
 
@@ -239,6 +419,10 @@ export const PengawasanMutuPrimerPage = () => {
                   SMKHP Jatuh Tempo
                 </p>
                 <p className="text-xs text-amber-600">&lt; 60 hari</p>
+                <p className="mt-0.5 text-[11px] leading-snug text-amber-500">
+                  Basis {formatAngka(basisPengawasan)} unit (HACCP {formatAngka(jumlahHaccp)} + SKP{' '}
+                  {formatAngka(jumlahSkp)})
+                </p>
               </div>
               <span className="text-xl font-bold text-amber-700">
                 {updateSmkhp.akanKedaluwarsa}
@@ -271,6 +455,52 @@ export const PengawasanMutuPrimerPage = () => {
           </div>
         </section>
       </div>
+
+      {/* Section Ringkasan 9 Sertifikasi — ditambahkan di atas section verifikasi */}
+      <section className="rounded-2xl border border-slate-200 bg-white shadow-xs">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-6 py-4">
+          <div>
+            <h2 className="font-semibold text-slate-800">Ringkasan 9 Sertifikasi</h2>
+            <p className="text-sm text-slate-500">
+              Jumlah sertifikat terbit per skema — primer (indigo) dan pascapanen
+              (hijau).
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
+              {totalSertifikasiAktif} Skema Sertifikasi
+            </span>
+            <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
+              {labelTahunAktif}
+            </span>
+            <span
+              className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${
+                sumberKpi === 'api'
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                  : sumberKpi === 'lokal'
+                    ? 'border-amber-200 bg-amber-50 text-amber-700'
+                    : 'border-slate-200 bg-slate-50 text-slate-500'
+              }`}
+            >
+              {sumberKpiLabel[sumberKpi]}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2 px-6 py-5">
+          {chipsSertifikasi.map((chip) => (
+            <span
+              key={chip.kode}
+              className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs ${chipStyle[chip.klaster]}`}
+            >
+              <span className="font-semibold uppercase">{chip.kode}</span>
+              <span className="text-sm font-bold tabular-nums">
+                {formatAngka(chip.jumlah)}
+              </span>
+            </span>
+          ))}
+        </div>
+      </section>
 
       {/* Section Verifikasi & Surveilans */}
       <section className="rounded-2xl border border-slate-200 bg-white shadow-xs">
@@ -445,6 +675,14 @@ export const PengawasanMutuPrimerPage = () => {
             </h3>
             <p className="mt-1 text-xs text-slate-400">
               Distribusi grade berdasarkan hasil evaluasi kepatuhan.
+            </p>
+            {/* Basis total unit pengawasan mutu UPI ekspor dari agregasi pascapanen */}
+            <p className="mt-1 text-xs text-slate-500">
+              Basis unit pengawasan:{' '}
+              <span className="font-semibold text-slate-700">
+                {formatAngka(basisPengawasan)} unit
+              </span>{' '}
+              (HACCP {formatAngka(jumlahHaccp)} + SKP {formatAngka(jumlahSkp)})
             </p>
 
             <div className="mt-5 space-y-4">
