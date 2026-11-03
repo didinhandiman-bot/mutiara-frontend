@@ -1,10 +1,18 @@
 import { useEffect, useState } from 'react';
+import {
+  Building2,
+  ChevronLeft,
+  ChevronRight,
+  ClipboardCheck,
+  ExternalLink,
+  FileText,
+  Inbox,
+  MapPin,
+  RefreshCw,
+  Search,
+  X,
+} from 'lucide-react';
 import { pengawasanData } from '../mocks/dashboardData';
-import type {
-  GradeSmkhp,
-  JadwalSurveilans,
-  StatusLogSmkhp,
-} from '../types/dashboard';
 // Tipe dipakai ulang dari section landing agar struktur respons API tetap satu sumber
 // (type-only, ikut terhapus saat compile sehingga tidak menambah dependensi runtime)
 import type { SertifikasiKpiData } from '../sections/SertifikasiSection';
@@ -38,9 +46,10 @@ const TAHUN_LABEL: Record<TahunOption, string> = {
 };
 
 // Data lokal cadangan: dipakai saat API tidak terjangkau agar halaman tetap tampil penuh
+// (snapshot "Semua Tahun"; SPDI kini live dari backend — 72 sertifikat terbit 2026)
 const KPI_FALLBACK: SertifikasiKpiData = {
-  total_nasional: 40747,
-  pasca_panen: { total: 37766, items: { SKP: 13624, HACCP: 24142, SPDI: 0 } },
+  total_nasional: 40819,
+  pasca_panen: { total: 37838, items: { SKP: 13624, HACCP: 24142, SPDI: 72 } },
   primer: {
     total: 2981,
     items: { CPIB: 172, CBIB: 741, CPPIB: 31, CPOIB: 33, CDOIB: 23, CPIB_KAPAL: 1981 },
@@ -81,6 +90,10 @@ const formatWaktu = (value: string | null | undefined): string | null => {
 const angkaAm = (value: number | undefined): number =>
   typeof value === 'number' && Number.isFinite(value) ? value : 0;
 
+// Skor aman: `null` bila field skor tidak tersedia (dipakai di drawer SPDI)
+const dariSkor = (value: number | null | undefined): number | null =>
+  typeof value === 'number' && Number.isFinite(value) ? value : null;
+
 // Chip 9 sertifikasi: urut sesuai kebutuhan tampilan (primer lalu pascapanen)
 const chipStyle = {
   primer: 'border-indigo-200 bg-indigo-50 text-indigo-700',
@@ -94,52 +107,6 @@ interface ChipSertifikasi {
   jumlah: number;
   klaster: KategoriChip;
 }
-
-type KategoriJadwal = 'Upcoming' | 'Due Soon' | 'Overdue' | 'Selesai';
-
-type FilterJadwal = 'Semua' | KategoriJadwal;
-
-const kategoriStyles: Record<
-  KategoriJadwal,
-  { badge: string; dot: string; ring: string; soft: string }
-> = {
-  Upcoming: {
-    badge: 'bg-blue-50 text-blue-700 border-blue-200',
-    dot: 'bg-blue-500',
-    ring: 'ring-blue-300',
-    soft: 'bg-blue-50',
-  },
-  'Due Soon': {
-    badge: 'bg-amber-50 text-amber-700 border-amber-200',
-    dot: 'bg-amber-500',
-    ring: 'ring-amber-300',
-    soft: 'bg-amber-50',
-  },
-  Overdue: {
-    badge: 'bg-rose-50 text-rose-700 border-rose-200',
-    dot: 'bg-rose-500',
-    ring: 'ring-rose-300',
-    soft: 'bg-rose-50',
-  },
-  Selesai: {
-    badge: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-    dot: 'bg-emerald-500',
-    ring: 'ring-emerald-300',
-    soft: 'bg-emerald-50',
-  },
-};
-
-const gradeStyles: Record<GradeSmkhp, { bar: string; badge: string }> = {
-  A: { bar: 'bg-emerald-500', badge: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-  B: { bar: 'bg-amber-500', badge: 'bg-amber-50 text-amber-700 border-amber-200' },
-  C: { bar: 'bg-rose-500', badge: 'bg-rose-50 text-rose-700 border-rose-200' },
-};
-
-const logStatusStyles: Record<StatusLogSmkhp, string> = {
-  Diperbarui: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  'Menunggu Verifikasi': 'bg-amber-50 text-amber-700 border-amber-200',
-  Kedaluwarsa: 'bg-rose-50 text-rose-700 border-rose-200',
-};
 
 const bulanSingkat = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
 
@@ -155,44 +122,129 @@ const daysUntil = (dateStr: string) => {
   return Math.round((target.getTime() - today.getTime()) / 86400000);
 };
 
-const classifyJadwal = (jadwal: JadwalSurveilans): KategoriJadwal => {
-  if (jadwal.status === 'Overdue') return 'Overdue';
-  if (jadwal.status === 'Selesai') return 'Selesai';
-  const sisa = daysUntil(jadwal.tanggal);
-  if (sisa < 0) return 'Overdue';
-  if (jadwal.status === 'Berjalan' || sisa <= 7) return 'Due Soon';
-  return 'Upcoming';
+// ==========================================================================
+// Daftar unit tersertifikasi per skema — endpoint publik mutiara-backend
+//   GET /api/v1/public/sertifikasi/perusahaan
+//        ?skema=&year=&search=&page=&limit=
+// ==========================================================================
+
+const LIMIT_PERUSAHAAN = 10;
+const SEARCH_DEBOUNCE_MS = 400;
+const SKELETON_ROWS = [0, 1, 2, 3, 4];
+
+// Pemetaan label skema pada chip ke parameter `skema` pada API.
+// Menerima label chip ('CPIB Kapal') maupun kode ternormalisasi ('CPIB_KAPAL')
+// sehingga parameter yang dikirim ke backend selalu valid.
+const SKEMA_API_MAP: Record<string, string> = {
+  CPIB: 'CPIB',
+  CBIB: 'CBIB',
+  'CPIB Kapal': 'CPIB_KAPAL',
+  CPIB_KAPAL: 'CPIB_KAPAL',
+  CDOIB: 'CDOIB',
+  CPOIB: 'CPOIB',
+  CPPIB: 'CPPIB',
+  SKP: 'SKP',
+  HACCP: 'HACCP',
+  SPDI: 'SPDI',
 };
 
-const labelSisaHari = (jadwal: JadwalSurveilans, kategori: KategoriJadwal) => {
-  if (kategori === 'Selesai') return 'Selesai';
-  const sisa = daysUntil(jadwal.tanggal);
-  if (kategori === 'Overdue') return `Terlambat ${Math.abs(sisa)} hari`;
-  if (sisa === 0) return 'Hari ini';
-  if (sisa === 1) return 'Besok';
-  return `${sisa} hari lagi`;
+interface PerusahaanItem {
+  id: number;
+  nama_unit: string;
+  nomor_sertifikat: string;
+  produk: string | null;
+  tgl_terbit: string | null;
+  tgl_kadaluarsa: string | null;
+  nama_upt: string | null;
+  skema: string | null;
+  // Field opsional khusus SPDI (database report_spdi) — ditampilkan bila backend mengirim
+  nomor_lampiran?: string | null;
+  provinsi?: string | null;
+  kbli?: string | null;
+  skor_inspeksi?: number | null;
+  skor_cdib?: number | null;
+}
+
+interface PerusahaanPagination {
+  total: number;
+  page: number;
+  limit: number;
+  total_pages: number;
+}
+
+interface PerusahaanResponse {
+  success?: boolean;
+  data?: PerusahaanItem[] | null;
+  pagination?: PerusahaanPagination | null;
+}
+
+interface PaginationInfo {
+  total: number;
+  total_pages: number;
+}
+
+// Tanggal aman untuk field nullable dari API (tanpa Invalid Date)
+const formatTanggalAm = (value: string | null | undefined): string => {
+  if (!value) return '—';
+  const [year, month, day] = value.split('-');
+  if (!year || !month || !day) return '—';
+  return formatTanggal(`${year}-${month}-${day}`);
 };
 
-const FILTER_OPTIONS: FilterJadwal[] = [
-  'Semua',
-  'Upcoming',
-  'Due Soon',
-  'Overdue',
-  'Selesai',
-];
+// Status sertifikat diturunkan dari tanggal kadaluwarsa
+const statusSertifikat = (
+  item: PerusahaanItem
+): { label: string; className: string } => {
+  if (!item.tgl_kadaluarsa) {
+    return {
+      label: 'Aktif',
+      className: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+    };
+  }
+  const sisa = daysUntil(item.tgl_kadaluarsa);
+  if (sisa < 0) {
+    return {
+      label: 'Kedaluwarsa',
+      className: 'border-rose-200 bg-rose-50 text-rose-700',
+    };
+  }
+  if (sisa <= 90) {
+    return {
+      label: 'Akan Kedaluwarsa',
+      className: 'border-amber-200 bg-amber-50 text-amber-700',
+    };
+  }
+  return {
+    label: 'Aktif',
+    className: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  };
+};
 
 export const PengawasanMutuPrimerPage = () => {
   const { mutuPrimer } = pengawasanData;
-  const { totalSertifikasiAktif, noregTerdaftar, jadwalSurveilans, updateSmkhp, ujiLabJakarta } =
-    mutuPrimer;
-
-  const [activeFilter, setActiveFilter] = useState<FilterJadwal>('Semua');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const { totalSertifikasiAktif, noregTerdaftar } = mutuPrimer;
 
   // Filter tahun pada header; ikut menyegarkan seluruh angka agregasi sertifikasi
   const [selectedYear, setSelectedYear] = useState<TahunOption>('2026');
   const [kpi, setKpi] = useState<SertifikasiKpiData>(KPI_FALLBACK);
   const [sumberKpi, setSumberKpi] = useState<SumberKpi>('memuat');
+
+  // Daftar unit tersertifikasi per skema (chip Ringkasan 9 Sertifikasi)
+  const [selectedSkema, setSelectedSkema] = useState<string>('CPIB');
+  const [perusahaanList, setPerusahaanList] = useState<PerusahaanItem[]>([]);
+  const [isLoadingPerusahaan, setIsLoadingPerusahaan] = useState(true);
+  const [perusahaanError, setPerusahaanError] = useState<string | null>(null);
+  const [perusahaanReload, setPerusahaanReload] = useState(0);
+  const [searchInput, setSearchInput] = useState(''); // nilai input (debounce)
+  const [searchKeyword, setSearchKeyword] = useState(''); // kata kunci yang dikirim ke API
+  const [page, setPage] = useState(1);
+  const [paginationInfo, setPaginationInfo] = useState<PaginationInfo>({
+    total: 0,
+    total_pages: 1,
+  });
+  const [selectedPerusahaan, setSelectedPerusahaan] =
+    useState<PerusahaanItem | null>(null);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
   // Tarik KPI sertifikasi; ganti tahun langsung memicu request baru.
   // Bila gagal, state tetap diisi KPI_FALLBACK supaya halaman tidak pernah blank.
@@ -235,40 +287,113 @@ export const PengawasanMutuPrimerPage = () => {
     };
   }, [selectedYear]);
 
-  const jadwalDenganKategori = jadwalSurveilans
-    .map((jadwal) => ({ ...jadwal, kategori: classifyJadwal(jadwal) }))
-    .sort((a, b) => a.tanggal.localeCompare(b.tanggal));
+  // Debounce pencarian: terapkan kata kunci setelah pengguna berhenti mengetik
+  useEffect(() => {
+    const value = searchInput.trim();
+    const timer = window.setTimeout(() => {
+      setSearchKeyword(value);
+      setPage(1);
+    }, SEARCH_DEBOUNCE_MS);
 
-  const counts = FILTER_OPTIONS.reduce<Record<FilterJadwal, number>>(
-    (acc, option) => {
-      acc[option] =
-        option === 'Semua'
-          ? jadwalDenganKategori.length
-          : jadwalDenganKategori.filter((item) => item.kategori === option).length;
-      return acc;
-    },
-    { Semua: 0, Upcoming: 0, 'Due Soon': 0, Overdue: 0, Selesai: 0 }
-  );
+    return () => window.clearTimeout(timer);
+  }, [searchInput]);
 
-  const filteredJadwal =
-    activeFilter === 'Semua'
-      ? jadwalDenganKategori
-      : jadwalDenganKategori.filter((item) => item.kategori === activeFilter);
+  // Ambil daftar unit tersertifikasi setiap skema / tahun / pencarian / halaman berubah.
+  // `selectedSkema` WAJIB ada di dependency agar URL benar-benar berubah saat chip diklik.
+  useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
 
-  const selected =
-    jadwalDenganKategori.find((item) => item.id === selectedId) ??
-    filteredJadwal[0] ??
-    null;
+    const fetchDaftarPerusahaan = () => {
+      setIsLoadingPerusahaan(true);
+      setPerusahaanError(null);
+      // Kosongkan daftar lama seketika: setiap request SELALU mengganti total
+      // isi tabel (replace), bukan menggabung/menumpuk dengan data skema sebelumnya
+      setPerusahaanList([]);
 
-  const totalGrade = updateSmkhp.gradeDistribusi.reduce(
-    (sum, item) => sum + item.jumlah,
-    0
-  );
+      // Normalisasi kode skema chip → parameter backend
+      // (mis. 'CPIB Kapal' → 'CPIB_KAPAL', kode ternormalisasi diterima apa adanya)
+      const apiSkema = SKEMA_API_MAP[selectedSkema] || selectedSkema;
+      const url = `${API_BASE_URL}/api/v1/public/sertifikasi/perusahaan?skema=${encodeURIComponent(
+        apiSkema
+      )}&year=${encodeURIComponent(selectedYear)}&page=${page}&limit=${LIMIT_PERUSAHAAN}&search=${encodeURIComponent(
+        searchKeyword
+      )}`;
 
-  // Basis total unit yang masuk pengawasan mutu UPI ekspor: gabungan HACCP + SKP
+      fetch(url, {
+        headers: { Accept: 'application/json' },
+        signal: controller.signal,
+      })
+        .then(async (res) => {
+          if (!res.ok) throw new Error(`Permintaan gagal (HTTP ${res.status})`);
+          const payload = (await res.json()) as PerusahaanResponse;
+          if (!payload?.success) throw new Error('Respons API tidak valid');
+          return payload;
+        })
+        .then((payload) => {
+          if (!active) return;
+          const total = Number(payload.pagination?.total) || 0;
+          const totalPages = Math.max(Number(payload.pagination?.total_pages) || 1, 1);
+
+          // REPLACE total — JANGAN spread/append dengan data lama
+          // (setPerusahaanList(prev => [...prev, ...data]) dilarang, agar data
+          // skema baru tidak menumpuk di bawah data skema sebelumnya)
+          setPerusahaanList(Array.isArray(payload.data) ? payload.data : []);
+          setPaginationInfo({ total, total_pages: totalPages });
+
+          // Bila halaman aktif di luar jangkauan (mis. setelah pencarian menyempit),
+          // kembali ke halaman terakhir yang masih berisi data.
+          if (page > totalPages) setPage(totalPages);
+        })
+        .catch((err: unknown) => {
+          // Respons dari request lama yang dibatalkan tidak boleh menimpa data skema baru
+          if (err instanceof Error && err.name === 'AbortError') return;
+          console.error('Gagal memuat daftar unit tersertifikasi:', err);
+          if (!active) return;
+          // Gagal memuat → kosongkan daftar. JANGAN isi dengan mock/fallback
+          // data HACCP untuk skema lain (dan jangan pertahankan data lama).
+          setPerusahaanList([]);
+          setPaginationInfo({ total: 0, total_pages: 1 });
+          setPerusahaanError(
+            'Tidak dapat memuat data sertifikasi. Pastikan backend sudah berjalan.'
+          );
+        })
+        .finally(() => {
+          if (active) setIsLoadingPerusahaan(false);
+        });
+    };
+
+    // Dibungkus setTimeout agar tidak memanggil setState secara sinkron di badan effect
+    const timer = window.setTimeout(fetchDaftarPerusahaan, 0);
+
+    return () => {
+      active = false;
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [selectedSkema, selectedYear, page, searchKeyword, perusahaanReload]);
+
+  // Kunci scroll body + tutup panel saat Escape ditekan
+  useEffect(() => {
+    if (!isDrawerOpen) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsDrawerOpen(false);
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isDrawerOpen]);
+
+  // Jumlah sertifikat pascapanen untuk chip SKP & HACCP
   const jumlahHaccp = angkaAm(kpi.pasca_panen.items.HACCP);
   const jumlahSkp = angkaAm(kpi.pasca_panen.items.SKP);
-  const basisPengawasan = jumlahHaccp + jumlahSkp;
 
   // Ringkasan 9 sertifikasi (primer: 6, pascapanen: 3)
   const chipsSertifikasi: ChipSertifikasi[] = [
@@ -285,12 +410,27 @@ export const PengawasanMutuPrimerPage = () => {
 
   const waktuPerbarui = formatWaktu(kpi.updated_at);
 
+  // Deteksi skema SPDI & skor tambahan dari API (dipakai pada drawer detail)
+  const isSpdi = selectedPerusahaan?.skema === 'SPDI';
+  const skorInspeksi = dariSkor(selectedPerusahaan?.skor_inspeksi);
+  const skorCdib = dariSkor(selectedPerusahaan?.skor_cdib);
+
   // Tahun yang benar-benar direpresentasikan angka di layar
   // (saat fallback lokal dipakai, angkanya bersifat semua tahun)
   const labelTahunAktif =
     kpi.selected_year && kpi.selected_year in TAHUN_LABEL
       ? TAHUN_LABEL[kpi.selected_year as TahunOption]
       : TAHUN_LABEL[selectedYear];
+
+  const totalPages = Math.max(paginationInfo.total_pages, 1);
+  const currentPage = Math.min(Math.max(page, 1), totalPages);
+
+  const bukaDetailPerusahaan = (item: PerusahaanItem) => {
+    setSelectedPerusahaan(item);
+    setIsDrawerOpen(true);
+  };
+
+  const tutupDrawerPerusahaan = () => setIsDrawerOpen(false);
 
   return (
     <div className="space-y-6">
@@ -352,118 +492,67 @@ export const PengawasanMutuPrimerPage = () => {
         </div>
       </div>
 
-      {/* Baris Utama: Hero Status Kepatuhan + Perhatian Utama */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <section className="rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 p-6 text-white shadow-sm lg:col-span-2 md:p-8">
-          <div className="flex items-center gap-2 text-sm font-medium text-white/80">
-            <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
-            Status Kepatuhan Mutu Primer
-          </div>
+      {/* Card biru Status Kepatuhan — full width (menggantikan card Perhatian Utama) */}
+      <section className="w-full rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 p-6 text-white shadow-sm md:p-8">
+        <div className="flex items-center gap-2 text-sm font-medium text-white/80">
+          <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+          Status Kepatuhan Mutu Primer dan Pascapanen
+        </div>
 
-          <div className="mt-4 flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
-            <div>
-              <p className="text-5xl font-bold tracking-tight md:text-6xl">
-                {formatAngka(kpi.total_nasional)}
-              </p>
-              <h2 className="mt-3 text-lg font-semibold md:text-xl">
-                Sertifikasi Aktif
-              </h2>
-              {/* Sub-metrik: kontribusi klaster primer & pascapanen */}
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <span className="rounded-full bg-white/15 px-3 py-1 text-xs font-semibold backdrop-blur-sm">
-                  Primer · {formatAngka(kpi.primer.total)}
-                </span>
-                <span className="rounded-full bg-white/15 px-3 py-1 text-xs font-semibold backdrop-blur-sm">
-                  Pascapanen · {formatAngka(kpi.pasca_panen.total)}
-                </span>
-              </div>
-              <p className="mt-2 max-w-xl text-sm leading-relaxed text-white/85">
-                Sebaran skema sertifikasi mutu primer dan pascapanen yang berlaku,
-                didampingi nomor registrasi (Noreg) eksportir.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <div className="rounded-xl bg-white/10 px-5 py-4 text-center backdrop-blur-sm">
-                <p className="text-3xl font-bold">{noregTerdaftar}</p>
-                <p className="mt-1 text-xs text-white/75">Noreg Terdaftar</p>
-              </div>
-              <span className="inline-flex w-fit items-center gap-2 rounded-full bg-white/15 px-3 py-1.5 text-sm font-semibold backdrop-blur-sm">
-                <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                Patuh
+        <div className="mt-4 flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p className="text-5xl font-bold tracking-tight md:text-6xl">
+              {formatAngka(kpi.total_nasional)}
+            </p>
+            <h2 className="mt-3 text-lg font-semibold md:text-xl">
+              Sertifikasi Aktif
+            </h2>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span className="rounded-full bg-white/15 px-3 py-1 text-xs font-semibold backdrop-blur-sm">
+                Primer · {formatAngka(kpi.primer.total)}
+              </span>
+              <span className="rounded-full bg-white/15 px-3 py-1 text-xs font-semibold backdrop-blur-sm">
+                Pascapanen · {formatAngka(kpi.pasca_panen.total)}
               </span>
             </div>
+            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/85">
+              Sebaran skema sertifikasi mutu primer dan pascapanen yang berlaku,
+              didampingi nomor registrasi (Noreg) eksportir.
+            </p>
           </div>
 
-          <p className="mt-6 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-white/70">
-            <span>Sumber data: SIAP MUTU & Pusat Manajemen Mutu (Pus MM)</span>
-            <span aria-hidden="true">·</span>
-            <span>{waktuPerbarui ? `Diperbarui ${waktuPerbarui}` : 'Pembaruan otomatis berkala'}</span>
-            <span aria-hidden="true">·</span>
-            <span className={sumberKpi === 'lokal' ? 'font-semibold text-amber-200' : ''}>
-              {sumberKpiLabel[sumberKpi]}
+          <div className="flex items-center gap-3">
+            <div className="rounded-xl bg-white/10 px-5 py-4 text-center backdrop-blur-sm">
+              <p className="text-3xl font-bold">{noregTerdaftar || 274}</p>
+              <p className="mt-1 text-xs text-white/75">Noreg Terdaftar</p>
+            </div>
+            <span className="inline-flex w-fit items-center gap-2 rounded-full bg-white/15 px-3 py-1.5 text-sm font-semibold backdrop-blur-sm">
+              <span className="h-2 w-2 rounded-full bg-emerald-400" />
+              Patuh
             </span>
-          </p>
-        </section>
-
-        <section className="flex flex-col rounded-2xl border border-slate-200 bg-white p-6 shadow-xs">
-          <h2 className="font-semibold text-slate-800">Perhatian Utama</h2>
-          <p className="mt-1 text-sm text-slate-500">
-            Indikator yang perlu tindak lanjut segera.
-          </p>
-
-          <div className="mt-5 space-y-3">
-            <div className="flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-              <div>
-                <p className="text-sm font-medium text-amber-800">
-                  SMKHP Jatuh Tempo
-                </p>
-                <p className="text-xs text-amber-600">&lt; 60 hari</p>
-                <p className="mt-0.5 text-[11px] leading-snug text-amber-500">
-                  Basis {formatAngka(basisPengawasan)} unit (HACCP {formatAngka(jumlahHaccp)} + SKP{' '}
-                  {formatAngka(jumlahSkp)})
-                </p>
-              </div>
-              <span className="text-xl font-bold text-amber-700">
-                {updateSmkhp.akanKedaluwarsa}
-              </span>
-            </div>
-
-            <div className="flex items-center justify-between rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
-              <div>
-                <p className="text-sm font-medium text-rose-800">
-                  Deviasi Uji Lab
-                </p>
-                <p className="text-xs text-rose-600">Kasus aktif</p>
-              </div>
-              <span className="text-xl font-bold text-rose-700">
-                {ujiLabJakarta.deviasiKasus}
-              </span>
-            </div>
-
-            <div className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-              <div>
-                <p className="text-sm font-medium text-emerald-800">
-                  Rasio Lulus Uji
-                </p>
-                <p className="text-xs text-emerald-600">UPT Jakarta</p>
-              </div>
-              <span className="text-xl font-bold text-emerald-700">
-                {ujiLabJakarta.lulusUjiPersen}%
-              </span>
-            </div>
           </div>
-        </section>
-      </div>
+        </div>
 
-      {/* Section Ringkasan 9 Sertifikasi — ditambahkan di atas section verifikasi */}
+        <p className="mt-6 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-white/70">
+          <span>Sumber data: SIAP MUTU & Pusat Manajemen Mutu (Pus MM)</span>
+          <span aria-hidden="true">·</span>
+          <span>{waktuPerbarui ? `Diperbarui ${waktuPerbarui}` : 'Diperbarui berkala'}</span>
+          <span aria-hidden="true">·</span>
+          <span className={sumberKpi === 'lokal' ? 'font-semibold text-amber-200' : ''}>
+            {sumberKpiLabel[sumberKpi]}
+          </span>
+        </p>
+      </section>
+
+      {/* Section Ringkasan 9 Sertifikasi — chip interaktif + daftar unit tersertifikasi */}
       <section className="rounded-2xl border border-slate-200 bg-white shadow-xs">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-6 py-4">
           <div>
             <h2 className="font-semibold text-slate-800">Ringkasan 9 Sertifikasi</h2>
             <p className="text-sm text-slate-500">
               Jumlah sertifikat terbit per skema — primer (indigo) dan pascapanen
-              (hijau).
+              (hijau). Klik salah satu skema untuk menampilkan daftar unit
+              tersertifikasinya.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -487,389 +576,427 @@ export const PengawasanMutuPrimerPage = () => {
           </div>
         </div>
 
+        {/* Chip 9 sertifikasi — tombol pemilih skema */}
         <div className="flex flex-wrap gap-2 px-6 py-5">
-          {chipsSertifikasi.map((chip) => (
-            <span
-              key={chip.kode}
-              className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs ${chipStyle[chip.klaster]}`}
-            >
-              <span className="font-semibold uppercase">{chip.kode}</span>
-              <span className="text-sm font-bold tabular-nums">
-                {formatAngka(chip.jumlah)}
-              </span>
-            </span>
-          ))}
-        </div>
-      </section>
-
-      {/* Section Verifikasi & Surveilans */}
-      <section className="rounded-2xl border border-slate-200 bg-white shadow-xs">
-        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 px-6 py-4">
-          <div>
-            <h2 className="font-semibold text-slate-800">
-              Jadwal Verifikasi & Surveilans
-            </h2>
-            <p className="text-sm text-slate-500">
-              Timeline pengawasan lapangan terdekat beserta status tindak lanjut.
-            </p>
-          </div>
-          <span className="text-xs text-slate-400">
-            Sumber: SIAP MUTU & Honnes Pus Pascapanen
-          </span>
-        </div>
-
-        {/* Filter Status */}
-        <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-6 py-3">
-          {FILTER_OPTIONS.map((option) => {
-            const isActive = activeFilter === option;
+          {chipsSertifikasi.map((chip) => {
+            const isActive = chip.kode === selectedSkema;
             return (
               <button
-                key={option}
+                key={chip.kode}
                 type="button"
-                onClick={() => setActiveFilter(option)}
-                className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
+                aria-pressed={isActive}
+                onClick={() => {
+                  setSelectedSkema(chip.kode);
+                  setPage(1);
+                  // Kosongkan daftar lama seketika (replace, bukan append) agar
+                  // data skema sebelumnya tidak sempat tampil menumpuk di bawah
+                  // data skema baru; langsung tampilkan status memuat
+                  setPerusahaanList([]);
+                  setIsLoadingPerusahaan(true);
+                }}
+                className={`inline-flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-xs transition-all ${chipStyle[chip.klaster]} ${
                   isActive
-                    ? 'bg-slate-900 text-white'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    ? 'scale-[1.02] shadow-sm ring-2 ring-blue-500 ring-offset-1'
+                    : 'hover:scale-[1.02] hover:shadow-xs'
                 }`}
               >
-                {option}
-                <span
-                  className={`rounded-full px-1.5 text-[10px] font-semibold ${
-                    isActive ? 'bg-white/20 text-white' : 'bg-white text-slate-500'
-                  }`}
-                >
-                  {counts[option]}
+                <span className="font-semibold uppercase">{chip.kode}</span>
+                <span className="text-sm font-bold tabular-nums">
+                  {formatAngka(chip.jumlah)}
                 </span>
+                {isActive && (
+                  <span className="rounded-full bg-white/70 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide">
+                    aktif
+                  </span>
+                )}
               </button>
             );
           })}
         </div>
 
-        <div className="grid grid-cols-1 gap-6 p-6 lg:grid-cols-3">
-          {/* Timeline */}
-          <div className="lg:col-span-2">
-            {filteredJadwal.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center text-sm text-slate-400">
-                Tidak ada jadwal pada kategori ini.
-              </div>
-            ) : (
-              <ol className="relative space-y-3 border-l border-slate-200 pl-6">
-                {filteredJadwal.map((jadwal) => {
-                  const style = kategoriStyles[jadwal.kategori];
-                  const isSelected = selected?.id === jadwal.id;
-                  return (
-                    <li key={jadwal.id} className="relative">
-                      <span
-                        className={`absolute -left-[31px] top-4 h-3 w-3 rounded-full ring-4 ring-white ${style.dot}`}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setSelectedId(jadwal.id)}
-                        className={`w-full rounded-xl border p-4 text-left transition-all cursor-pointer ${
-                          isSelected
-                            ? `border-transparent ring-2 ${style.ring} ${style.soft}`
-                            : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
-                        }`}
-                      >
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <span className="text-sm font-semibold text-slate-800">
-                            {jadwal.namaUnit}
-                          </span>
-                          <span
-                            className={`inline-block rounded-md border px-2.5 py-1 text-xs font-semibold ${style.badge}`}
-                          >
-                            {jadwal.kategori}
-                          </span>
-                        </div>
-                        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
-                          <span className="font-mono text-slate-400">{jadwal.id}</span>
-                          <span>{formatTanggal(jadwal.tanggal)}</span>
-                          <span className="inline-flex items-center gap-1">
-                            <span className="font-medium text-slate-600">
-                              {jadwal.tipe}
-                            </span>
-                          </span>
-                          <span className="font-medium text-slate-600">
-                            {labelSisaHari(jadwal, jadwal.kategori)}
-                          </span>
-                        </div>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ol>
-            )}
-          </div>
-
-          {/* Detail Jadwal Terpilih */}
-          <div className="lg:col-span-1">
-            <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-5">
-              <h3 className="text-sm font-semibold text-slate-700">
-                Detail Jadwal
+        {/* Tabel daftar unit/perusahaan tersertifikasi */}
+        <div className="border-t border-slate-100 px-6 pt-5 pb-6">
+          <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-slate-800">
+                Daftar Unit Tersertifikasi: {selectedSkema} ({labelTahunAktif})
               </h3>
-              {selected ? (
-                <dl className="mt-4 space-y-3 text-sm">
-                  <div>
-                    <dt className="text-xs text-slate-400">Nama Unit</dt>
-                    <dd className="font-medium text-slate-800">
-                      {selected.namaUnit}
-                    </dd>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <dt className="text-xs text-slate-400">Tipe</dt>
-                    <dd className="font-medium text-slate-700">{selected.tipe}</dd>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <dt className="text-xs text-slate-400">Tanggal</dt>
-                    <dd className="font-medium text-slate-700">
-                      {formatTanggal(selected.tanggal)}
-                    </dd>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <dt className="text-xs text-slate-400">Status</dt>
-                    <dd>
-                      <span
-                        className={`inline-block rounded-md border px-2.5 py-1 text-xs font-semibold ${kategoriStyles[selected.kategori].badge}`}
-                      >
-                        {selected.kategori}
-                      </span>
-                    </dd>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <dt className="text-xs text-slate-400">Sisa Waktu</dt>
-                    <dd className="font-medium text-slate-700">
-                      {labelSisaHari(selected, selected.kategori)}
-                    </dd>
-                  </div>
-                </dl>
-              ) : (
-                <p className="mt-4 text-sm text-slate-400">
-                  Pilih salah satu jadwal untuk melihat detail.
-                </p>
-              )}
+              <p className="mt-0.5 text-xs text-slate-500">
+                {isLoadingPerusahaan
+                  ? 'Memuat data sertifikasi…'
+                  : `Total ${formatAngka(paginationInfo.total)} sertifikasi${
+                      searchKeyword ? ` untuk pencarian "${searchKeyword}"` : ''
+                    }`}
+              </p>
             </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Section Update SMKHP */}
-      <section className="rounded-2xl border border-slate-200 bg-white shadow-xs">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-6 py-4">
-          <div>
-            <h2 className="font-semibold text-slate-800">Data Update SMKHP</h2>
-            <p className="text-sm text-slate-500">
-              Monitoring pembaruan Sertifikat Mutu Kelayakan Hasil Perikanan.
-            </p>
-          </div>
-          <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-500">
-            {updateSmkhp.totalAktif} SMKHP Aktif
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 gap-6 p-6 lg:grid-cols-2">
-          {/* Grade UPI / Unit */}
-          <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-5">
-            <h3 className="text-sm font-semibold text-slate-700">
-              Ringkasan Grade UPI / Unit
-            </h3>
-            <p className="mt-1 text-xs text-slate-400">
-              Distribusi grade berdasarkan hasil evaluasi kepatuhan.
-            </p>
-            {/* Basis total unit pengawasan mutu UPI ekspor dari agregasi pascapanen */}
-            <p className="mt-1 text-xs text-slate-500">
-              Basis unit pengawasan:{' '}
-              <span className="font-semibold text-slate-700">
-                {formatAngka(basisPengawasan)} unit
-              </span>{' '}
-              (HACCP {formatAngka(jumlahHaccp)} + SKP {formatAngka(jumlahSkp)})
-            </p>
-
-            <div className="mt-5 space-y-4">
-              {updateSmkhp.gradeDistribusi.map((item) => {
-                const persen = Math.round((item.jumlah / totalGrade) * 100);
-                return (
-                  <div key={item.grade}>
-                    <div className="flex items-center justify-between">
-                      <span
-                        className={`inline-flex h-6 w-6 items-center justify-center rounded-md border text-xs font-bold ${gradeStyles[item.grade].badge}`}
-                      >
-                        {item.grade}
-                      </span>
-                      <span className="text-sm font-semibold text-slate-700">
-                        {item.jumlah} unit · {persen}%
-                      </span>
-                    </div>
-                    <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-slate-200">
-                      <div
-                        className={`h-full rounded-full ${gradeStyles[item.grade].bar}`}
-                        style={{ width: `${persen}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="mt-5 flex items-center justify-between border-t border-slate-200 pt-4">
-              <span className="text-xs text-slate-500">Mendekati jatuh tempo</span>
-              <span className="text-sm font-bold text-amber-600">
-                {updateSmkhp.akanKedaluwarsa} unit
-              </span>
+            <div className="relative w-full md:w-80">
+              <Search
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+                aria-hidden="true"
+              />
+              <input
+                type="search"
+                value={searchInput}
+                onChange={(event) => setSearchInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    setSearchKeyword(searchInput.trim());
+                    setPage(1);
+                  }
+                }}
+                placeholder="Cari nama unit / nomor sertifikat…"
+                aria-label="Cari nama unit atau nomor sertifikat"
+                className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-700 placeholder:text-slate-400 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              />
             </div>
           </div>
 
-          {/* Log Pembaruan Terakhir */}
-          <div className="rounded-xl border border-slate-100 bg-white">
-            <div className="border-b border-slate-100 px-4 py-3">
-              <h3 className="text-sm font-semibold text-slate-700">
-                Log Pembaruan Terakhir
-              </h3>
+          {perusahaanError ? (
+            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-6 text-center">
+              <p className="font-medium text-amber-800">{perusahaanError}</p>
+              <button
+                type="button"
+                onClick={() => setPerusahaanReload((prev) => prev + 1)}
+                className="mt-4 inline-flex cursor-pointer items-center gap-2 rounded-lg bg-amber-600 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-amber-700"
+              >
+                <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                Coba Lagi
+              </button>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-left text-sm">
+          ) : (
+            <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 shadow-xs">
+              <table className="w-full min-w-[1020px] border-collapse text-left text-sm">
                 <thead>
-                  <tr className="border-b border-slate-100 bg-slate-50 font-medium text-slate-500">
-                    <th className="px-4 py-2.5">Unit</th>
-                    <th className="px-4 py-2.5">Diperbarui</th>
-                    <th className="px-4 py-2.5">Status</th>
+                  <tr className="border-b border-slate-200 bg-slate-50 font-medium text-slate-500">
+                    <th scope="col" className="px-4 py-3">
+                      No
+                    </th>
+                    <th scope="col" className="px-4 py-3">
+                      Nama Unit / Perusahaan
+                    </th>
+                    <th scope="col" className="px-4 py-3">
+                      No. Sertifikat
+                    </th>
+                    <th scope="col" className="px-4 py-3">
+                      Komoditas / Produk
+                    </th>
+                    <th scope="col" className="px-4 py-3">
+                      Masa Berlaku
+                    </th>
+                    <th scope="col" className="px-4 py-3">
+                      UPT Pembina
+                    </th>
+                    <th scope="col" className="px-4 py-3 text-right">
+                      Aksi
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {updateSmkhp.logPembaruan.map((log) => (
-                    <tr key={log.id} className="transition-colors hover:bg-slate-50/80">
-                      <td className="px-4 py-3">
-                        <p className="font-medium text-slate-800">{log.namaUnit}</p>
-                        <p className="text-xs font-mono text-slate-400">{log.id}</p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <p className="text-slate-600">{formatTanggal(log.tanggal)}</p>
-                        <p className="text-xs text-slate-400">
-                          s.d. {formatTanggal(log.berlakuHingga)}
+                  {isLoadingPerusahaan ? (
+                    SKELETON_ROWS.map((row) => (
+                      <tr key={row} aria-hidden="true">
+                        {[0, 1, 2, 3, 4, 5, 6].map((col) => (
+                          <td key={col} className="px-4 py-3">
+                            <div className="h-4 w-full max-w-[120px] animate-pulse rounded bg-slate-200" />
+                          </td>
+                        ))}
+                      </tr>
+                    ))
+                  ) : perusahaanList.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="px-4 py-12 text-center">
+                        <Inbox
+                          className="mx-auto h-10 w-10 text-slate-300"
+                          aria-hidden="true"
+                        />
+                        <p className="mt-3 font-medium text-slate-600">
+                          Data tidak ditemukan
+                        </p>
+                        <p className="mt-1 text-sm text-slate-400">
+                          Belum ada unit tersertifikasi untuk skema {selectedSkema} pada{' '}
+                          {labelTahunAktif}
+                          {searchKeyword ? ` dengan kata kunci "${searchKeyword}"` : ''}.
                         </p>
                       </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`inline-block rounded-md border px-2.5 py-1 text-xs font-semibold ${logStatusStyles[log.status]}`}
-                        >
-                          {log.status}
-                        </span>
-                      </td>
                     </tr>
-                  ))}
+                  ) : (
+                    perusahaanList.map((item, index) => (
+                      <tr
+                        key={item.id}
+                        className="transition-colors hover:bg-slate-50/80"
+                      >
+                        <td className="px-4 py-3 tabular-nums text-slate-500">
+                          {(currentPage - 1) * LIMIT_PERUSAHAAN + index + 1}
+                        </td>
+                        <td className="px-4 py-3">
+                          <button
+                            type="button"
+                            onClick={() => bukaDetailPerusahaan(item)}
+                            className="group inline-flex cursor-pointer items-center gap-1.5 text-left font-medium text-blue-600 underline-offset-2 hover:underline"
+                          >
+                            {item.nama_unit}
+                            <ExternalLink
+                              className="h-3.5 w-3.5 shrink-0 opacity-60 transition-opacity group-hover:opacity-100"
+                              aria-hidden="true"
+                            />
+                          </button>
+                        </td>
+                        <td className="px-4 py-3 font-mono text-xs text-slate-600">
+                          {item.nomor_sertifikat || '—'}
+                        </td>
+                        <td className="px-4 py-3 text-slate-600">
+                          {item.produk || '—'}
+                        </td>
+                        <td className="px-4 py-3 text-slate-600">
+                          <span className="block text-slate-700">
+                            {formatTanggalAm(item.tgl_terbit)}
+                          </span>
+                          <span className="text-xs text-slate-400">
+                            s.d. {formatTanggalAm(item.tgl_kadaluarsa)}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-slate-600">
+                          {item.nama_upt || '—'}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            type="button"
+                            onClick={() => bukaDetailPerusahaan(item)}
+                            className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
+                          >
+                            Lihat Detail
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
-          </div>
+          )}
+
+          {!perusahaanError && !isLoadingPerusahaan && (
+            <div className="mt-4 flex flex-col items-center justify-between gap-3 sm:flex-row">
+              <p className="text-xs text-slate-500">
+                Halaman {currentPage} dari {totalPages} (Total{' '}
+                {formatAngka(paginationInfo.total)} data)
+              </p>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setPage(currentPage - 1)}
+                  disabled={currentPage <= 1}
+                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+                  Sebelumnya
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPage(currentPage + 1)}
+                  disabled={currentPage >= totalPages}
+                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Berikutnya
+                  <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </section>
 
-      {/* Section Uji Laboratorium UPT Jakarta */}
-      <section className="rounded-2xl border border-slate-200 bg-white shadow-xs">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-6 py-4">
-          <div>
-            <h2 className="font-semibold text-slate-800">
-              Uji Laboratorium UPT Jakarta
-            </h2>
-            <p className="text-sm text-slate-500">
-              Rekapitulasi pengujian sampel perikanan dan status cemaran.
-            </p>
-          </div>
-          <span className="text-xs text-slate-400">
-            Sumber: UPT Laboratorium Jakarta
-          </span>
-        </div>
+      {/* Slide-over detail unit/perusahaan tersertifikasi (panel kanan) */}
+      <div
+        className={`fixed inset-0 z-50 overflow-hidden ${
+          isDrawerOpen ? '' : 'pointer-events-none'
+        }`}
+        aria-hidden={!isDrawerOpen}
+        inert={!isDrawerOpen}
+      >
+        {/* Backdrop overlay */}
+        <div
+          role="presentation"
+          onClick={tutupDrawerPerusahaan}
+          className={`absolute inset-0 bg-slate-900/50 backdrop-blur-xs transition-opacity duration-300 ${
+            isDrawerOpen ? 'opacity-100' : 'opacity-0'
+          }`}
+        />
 
-        <div className="grid grid-cols-1 gap-6 p-6 lg:grid-cols-3">
-          {/* Rasio Lulus */}
-          <div className="flex flex-col items-center justify-center rounded-xl border border-slate-100 bg-slate-50/60 p-5">
-            <div className="relative h-40 w-40">
-              <div
-                className="h-40 w-40 rounded-full"
-                style={{
-                  background: `conic-gradient(#0d9488 ${ujiLabJakarta.lulusUjiPersen}%, #e2e8f0 0)`,
-                }}
-              />
-              <div className="absolute inset-4 flex flex-col items-center justify-center rounded-full bg-white">
-                <span className="text-3xl font-bold text-slate-800">
-                  {ujiLabJakarta.lulusUjiPersen}%
+        {/* Panel detail */}
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="drawer-perusahaan-title"
+          className={`absolute inset-y-0 right-0 flex w-full max-w-md flex-col bg-white shadow-2xl transition-transform duration-300 ease-out ${
+            isDrawerOpen ? 'translate-x-0' : 'translate-x-full'
+          }`}
+        >
+          {/* Header drawer */}
+          <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-wider text-blue-600">
+                Detail Sertifikasi
+              </p>
+              <h3
+                id="drawer-perusahaan-title"
+                className="mt-1 text-lg font-bold leading-snug text-slate-800"
+              >
+                {selectedPerusahaan?.nama_unit ?? '—'}
+              </h3>
+              <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700">
+                  {selectedPerusahaan?.skema || selectedSkema}
                 </span>
-                <span className="text-xs text-slate-400">Lulus Syarat</span>
+                {selectedPerusahaan && (
+                  <span
+                    className={`inline-block rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                      statusSertifikat(selectedPerusahaan).className
+                    }`}
+                  >
+                    {statusSertifikat(selectedPerusahaan).label}
+                  </span>
+                )}
               </div>
             </div>
-            <p className="mt-4 text-sm text-slate-500">
-              dari {ujiLabJakarta.totalSampel.toLocaleString('id-ID')} sampel diuji
-            </p>
+            <button
+              type="button"
+              onClick={tutupDrawerPerusahaan}
+              aria-label="Tutup detail sertifikasi"
+              className="shrink-0 cursor-pointer rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+            >
+              <X className="h-5 w-5" aria-hidden="true" />
+            </button>
           </div>
 
-          {/* Parameter + Alert */}
-          <div className="lg:col-span-2">
-            <div className="overflow-hidden rounded-xl border border-slate-100">
-              <table className="w-full border-collapse text-left text-sm">
-                <thead>
-                  <tr className="border-b border-slate-100 bg-slate-50 font-medium text-slate-500">
-                    <th className="px-4 py-2.5">Parameter Uji</th>
-                    <th className="px-4 py-2.5">Jumlah Sampel</th>
-                    <th className="px-4 py-2.5">Lulus Syarat</th>
-                    <th className="px-4 py-2.5">Deviasi</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {ujiLabJakarta.parameterUji.map((param) => (
-                    <tr key={param.parameter} className="transition-colors hover:bg-slate-50/80">
-                      <td className="px-4 py-3 font-medium text-slate-800">
-                        {param.parameter}
-                      </td>
-                      <td className="px-4 py-3 text-slate-600">
-                        {param.jumlahSampel.toLocaleString('id-ID')}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <div className="h-1.5 w-20 overflow-hidden rounded-full bg-slate-100">
-                            <div
-                              className="h-full rounded-full bg-teal-600"
-                              style={{ width: `${param.lulusPersen}%` }}
-                            />
-                          </div>
-                          <span className="text-xs font-semibold text-slate-600">
-                            {param.lulusPersen}%
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`font-semibold ${
-                            param.deviasi > 0 ? 'text-rose-600' : 'text-emerald-600'
-                          }`}
-                        >
-                          {param.deviasi}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+          {/* Isi detail */}
+          {selectedPerusahaan && (
+            <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
+              {/* Legalitas */}
+              <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+                <div className="flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-slate-400" aria-hidden="true" />
+                  <h4 className="text-sm font-semibold text-slate-700">
+                    Legalitas
+                  </h4>
+                </div>
+                <dl className="mt-3 space-y-2.5 text-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <dt className="text-xs text-slate-400">Nomor Sertifikat</dt>
+                    <dd className="break-all text-right font-mono text-xs font-medium text-slate-800">
+                      {selectedPerusahaan.nomor_sertifikat || '—'}
+                    </dd>
+                  </div>
+                  <div className="flex items-start justify-between gap-3">
+                    <dt className="text-xs text-slate-400">Tanggal Terbit</dt>
+                    <dd className="font-medium text-slate-700">
+                      {formatTanggalAm(selectedPerusahaan.tgl_terbit)}
+                    </dd>
+                  </div>
+                  <div className="flex items-start justify-between gap-3">
+                    <dt className="text-xs text-slate-400">Masa Berlaku s.d.</dt>
+                    <dd className="font-medium text-slate-700">
+                      {formatTanggalAm(selectedPerusahaan.tgl_kadaluarsa)}
+                    </dd>
+                  </div>
+                  {/* SPDI: Nomor Lampiran Teknis (bila dikirim backend) */}
+                  {isSpdi && selectedPerusahaan.nomor_lampiran && (
+                    <div className="flex items-start justify-between gap-3">
+                      <dt className="text-xs text-slate-400">Lampiran Teknis SPDI</dt>
+                      <dd className="break-all text-right font-mono text-xs font-medium text-slate-800">
+                        {selectedPerusahaan.nomor_lampiran}
+                      </dd>
+                    </div>
+                  )}
+                </dl>
+              </div>
 
-            {ujiLabJakarta.deviasiKasus > 0 && (
-              <div className="mt-4 flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4">
-                <span className="mt-1 h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-rose-500" />
-                <div>
-                  <p className="text-sm font-semibold text-rose-800">
-                    Alert Cemaran Aktif
-                  </p>
-                  <p className="mt-0.5 text-xs leading-relaxed text-rose-600">
-                    Terdapat {ujiLabJakarta.deviasiKasus} kasus deviasi dari{' '}
-                    {ujiLabJakarta.totalSampel.toLocaleString('id-ID')} sampel.
-                    Prioritaskan penelusuran pada parameter dengan deviasi
-                    tertinggi.
+              {/* Operasional */}
+              <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+                <div className="flex items-center gap-2">
+                  <Building2 className="h-4 w-4 text-slate-400" aria-hidden="true" />
+                  <h4 className="text-sm font-semibold text-slate-700">
+                    Operasional
+                  </h4>
+                </div>
+                <dl className="mt-3 space-y-2.5 text-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <dt className="text-xs text-slate-400">
+                      UPT Pembina / Penerbit
+                    </dt>
+                    <dd className="text-right font-medium text-slate-800">
+                      {selectedPerusahaan.nama_upt || '—'}
+                    </dd>
+                  </div>
+                  <div className="flex items-start justify-between gap-3">
+                    <dt className="text-xs text-slate-400">
+                      Komoditas / Ruang Lingkup
+                    </dt>
+                    <dd className="text-right font-medium text-slate-800">
+                      {selectedPerusahaan.produk || '—'}
+                    </dd>
+                  </div>
+                  {/* SPDI: Provinsi & KBLI / Ruang Lingkup Distribusi (bila dikirim backend) */}
+                  {isSpdi && selectedPerusahaan.provinsi && (
+                    <div className="flex items-start justify-between gap-3">
+                      <dt className="text-xs text-slate-400">Provinsi</dt>
+                      <dd className="text-right font-medium text-slate-800">
+                        {selectedPerusahaan.provinsi}
+                      </dd>
+                    </div>
+                  )}
+                  {isSpdi && selectedPerusahaan.kbli && (
+                    <div className="flex items-start justify-between gap-3">
+                      <dt className="flex items-center gap-1 text-xs text-slate-400">
+                        <MapPin className="h-3 w-3 text-slate-300" aria-hidden="true" />
+                        KBLI / Ruang Lingkup Distribusi
+                      </dt>
+                      <dd className="text-right font-medium text-slate-800">
+                        {selectedPerusahaan.kbli}
+                      </dd>
+                    </div>
+                  )}
+                </dl>
+              </div>
+
+              {/* SPDI: ringkasan hasil penilaian (bila backend mengirim skor) */}
+              {isSpdi && (skorInspeksi !== null || skorCdib !== null) && (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                  <div className="flex items-center gap-2">
+                    <ClipboardCheck className="h-4 w-4 text-emerald-600" aria-hidden="true" />
+                    <h4 className="text-sm font-semibold text-emerald-800">
+                      Ringkasan Hasil Penilaian
+                    </h4>
+                  </div>
+                  <p className="mt-2 text-sm font-medium text-emerald-800">
+                    Hasil Inspeksi:{' '}
+                    {skorInspeksi !== null ? `${formatAngka(skorInspeksi)}%` : '—'}
+                    {' · '}
+                    Penilaian CDIB:{' '}
+                    {skorCdib !== null ? `${formatAngka(skorCdib)}%` : '—'}
                   </p>
                 </div>
-              </div>
-            )}
+              )}
+
+              <p className="text-[11px] leading-relaxed text-slate-400">
+                Data disajikan sebagaimana diterbitkan oleh BPPMHKP melalui SIAP
+                MUTU & Pusat Manajemen Mutu (Pus MM).
+              </p>
+            </div>
+          )}
+
+          {/* Aksi penutup */}
+          <div className="border-t border-slate-200 px-6 py-4">
+            <button
+              type="button"
+              onClick={tutupDrawerPerusahaan}
+              className="w-full cursor-pointer rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+            >
+              Tutup
+            </button>
           </div>
         </div>
-      </section>
+      </div>
     </div>
   );
 };
