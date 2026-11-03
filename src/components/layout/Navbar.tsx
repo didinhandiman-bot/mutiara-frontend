@@ -32,7 +32,7 @@ export const Navbar = () => {
               MUTIARA
             </div>
             <span className="font-bold text-slate-900 dark:text-white text-lg hidden lg:inline">
-              Monitoring Jaminan Mutu
+              Monitoring Jaminan Mutu Perikanan
             </span>
           </Link>
 

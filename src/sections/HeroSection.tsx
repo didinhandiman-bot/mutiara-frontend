@@ -38,7 +38,7 @@ export const HeroSection = () => {
 
           {/* Headline */}
           <h1 className="text-3xl sm:text-4xl lg:text-[40px] font-extrabold text-slate-900 dark:text-white leading-tight transition-colors text-left">
-            Monitoring Jaminan Mutu{' '}
+            Monitoring Jaminan Mutu Perikanan{' '}
             <span className="block text-blue-600 dark:text-blue-400">Terintegrasi Hulu-Hilir</span>
           </h1>
 

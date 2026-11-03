@@ -71,7 +71,7 @@ interface SertifikasiCard<K extends string> {
 const PASCA_PANEN_CARDS: SertifikasiCard<PascaPanenKey>[] = [
   { key: 'SKP', kode: 'SKP', nama: 'Sertifikat Kelayakan Pengolahan' },
   { key: 'HACCP', kode: 'HACCP', nama: 'Hazard Analysis Critical Control Point' },
-  { key: 'SPDI', kode: 'SPDI', nama: 'Surat Persetujuan Desain Instalasi' },
+  { key: 'SPDI', kode: 'SPDI', nama: 'Sertifikat Penerapan Distribusi Ikan' },
 ];
 
 const PRIMER_CARDS: SertifikasiCard<PrimerKey>[] = [
